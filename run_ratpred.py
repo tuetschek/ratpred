@@ -24,6 +24,8 @@ def main():
                     help='Target column (default: quality)', default='quality')
     ap.add_argument('-p', '--training-portion', type=float,
                     help='Part of data used for training (rest is test)', default=0.8)
+    ap.add_argument('-d', '--delex-slots', type=str,
+                    help='Comma-separated list of slots to delexicalize', default='')
     ap.add_argument('config_file', type=str, help='Path to the configuration file')
     ap.add_argument('data_file', type=str, help='Path to the data TSV file')
 
@@ -31,7 +33,8 @@ def main():
 
     log_info("Loading data...")
     cfg = Config(args.config_file)
-    inputs, targets = read_data(args.data_file, args.target)
+    delex_slots = set(args.delex_slots.split(',') if args.delex_slots else [])
+    inputs, targets = read_data(args.data_file, args.target, delex_slots)
 
     train_len = int(len(inputs) * args.training_portion)
     train_insts = inputs[:train_len]

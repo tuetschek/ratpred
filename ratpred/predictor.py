@@ -153,13 +153,12 @@ class RatingPredictor(TFModel):
         """
         # store training data, make it smaller if necessary
         train_size = int(round(data_portion * len(inputs)))
-        self.train_refs = [ref for ref, _ in inputs[:train_size]]
-        self.train_hyps = [hyp for _, hyp in inputs[:train_size]]
+        self.train_das = [da for da, _, _ in inputs[:train_size]]
+        self.train_refs = [ref for _, ref, _ in inputs[:train_size]]
+        self.train_hyps = [hyp for _, _, hyp in inputs[:train_size]]
         self.y = targets[:train_size]
         self.train_order = range(len(self.train_refs))
         log_info('Using %d training instances.' % train_size)
-
-        # TODO some delexicalization ?
 
         # initialize input embeddings
         self.dict_size = self.embs.init_dict(self.train_refs)
@@ -175,8 +174,7 @@ class RatingPredictor(TFModel):
         # initialize NN classifier
         self._init_neural_network()
         # initialize the NN variables
-        tf.global_variables_initializer
-        self.session.run(tf.global_variables_initializer())
+        self.session.run(tf.initialize_all_variables())
 
     def _init_neural_network(self):
         """Create the neural network for classification"""
@@ -211,7 +209,7 @@ class RatingPredictor(TFModel):
         self.session = tf.Session(config=session_config)
 
         # this helps us load/save the model
-        self.saver = tf.train.Saver(tf.global_variables())
+        self.saver = tf.train.Saver(tf.all_variables())
 
     def _rnn(self, name, enc_inputs_ref, enc_inputs_hyp):
         with tf.variable_scope('enc_ref'):
