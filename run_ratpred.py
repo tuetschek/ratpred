@@ -8,8 +8,9 @@ import sys
 from argparse import ArgumentParser
 
 from flect.config import Config
-from tgen.logf import log_info
+from tgen.logf import log_info, set_debug_stream
 from tgen.debug import exc_info_hook
+from tgen.futil import file_stream
 
 from ratpred.futil import read_data
 from ratpred.predictor import RatingPredictor
@@ -18,38 +19,59 @@ from ratpred.predictor import RatingPredictor
 sys.excepthook = exc_info_hook
 
 
+def train(args):
+
+    log_info("Loading configuration from %s..." % args.config_file)
+    cfg = Config(args.config_file)
+
+    log_info("Initializing...")
+    rp = RatingPredictor(cfg)
+    log_info("Training...")
+    rp.train(args.train_data, args.training_portion)
+    log_info("Saving model to %s..." % args.model_file)
+    rp.save_to_file(args.model_file)
+
+
+def test(args):
+
+    log_info("Loading model from %s..." % args.model_file)
+    rp = RatingPredictor.load_from_file(args.model_file)
+
+    log_info("Loading test data from %s..." % args.test_data)
+    inputs, targets = read_data(args.test_data, rp.target_col, rp.delex_slots)
+
+    dist = rp.evaluate(inputs, targets)
+    log_info("Distance: %.3f" % dist)
+
+
+
 def main():
     ap = ArgumentParser()
-    ap.add_argument('-t', '--target', type=str,
-                    help='Target column (default: quality)', default='quality')
-    ap.add_argument('-p', '--training-portion', type=float,
-                    help='Part of data used for training (rest is test)', default=0.8)
-    ap.add_argument('-d', '--delex-slots', type=str,
-                    help='Comma-separated list of slots to delexicalize', default='')
-    ap.add_argument('config_file', type=str, help='Path to the configuration file')
-    ap.add_argument('data_file', type=str, help='Path to the data TSV file')
+    ap.add_argument('-d', '--debug-output', help='Path to debugging output file', type=str)
+
+    subp = ap.add_subparsers()
+
+    ap_train = subp.add_parser('train', help='Train a new rating predictor')
+    ap_train.add_argument('-p', '--training-portion', type=float,
+                          help='Part of data used for traing', default=1.0)
+    ap_train.add_argument('config_file', type=str, help='Path to the configuration file')
+    ap_train.add_argument('train_data', type=str, help='Path to the training data TSV file')
+    ap_train.add_argument('model_file', type=str, help='Path where to store the predictor model')
+
+    ap_test = subp.add_parser('test', help='Test a trained predictor on given data')
+    ap_test.add_argument('model_file', type=str, help='Path to a trained predictor model')
+    ap_test.add_argument('test_data', type=str, help='Path to the test data TSV file')
 
     args = ap.parse_args()
+    if args.debug_output:
+        ds = file_stream(args.debug_output, mode='w')
+        set_debug_stream(ds)
 
-    log_info("Loading data...")
-    cfg = Config(args.config_file)
-    delex_slots = set(args.delex_slots.split(',') if args.delex_slots else [])
-    inputs, targets = read_data(args.data_file, args.target, delex_slots)
+    if hasattr(args, 'train_data'):
+        train(args)
+    else:
+        test(args)
 
-    train_len = int(len(inputs) * args.training_portion)
-    train_insts = inputs[:train_len]
-    train_targets = targets[:train_len]
-    test_insts = inputs[train_len:]
-    test_targets = targets[train_len:]
-
-    log_info("Creating predictor...")
-    rp = RatingPredictor(cfg)
-    log_info("Training on %d instances..." % len(train_insts))
-    rp.train(train_insts, train_targets)
-
-    log_info("Testing on %d instances..." % len(test_insts))
-    dist = rp.evaluate(test_insts, test_targets)
-    log_info("Distance: %.3f" % dist)
 
 
 if __name__ == '__main__':

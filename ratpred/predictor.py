@@ -25,6 +25,8 @@ from tgen.rnd import rnd
 from tgen.embeddings import TokenEmbeddingSeq2SeqExtract
 from tgen.tf_ml import TFModel
 
+from ratpred.futil import read_data
+
 
 class RatingPredictor(TFModel):
 
@@ -46,6 +48,13 @@ class RatingPredictor(TFModel):
         self.validation_freq = cfg.get('validation_freq', 10)
         self.max_cores = cfg.get('max_cores')
         self.checkpoint_path = None
+
+        self.target_col = cfg.get('target_col', 'quality')
+        self.delex_slots = cfg.get('delex_slots', set())
+        if self.delex_slots:
+            self.delex_slots = set(self.delex_slots.split(','))
+        self.reuse_embeddings = cfg.get('reuse_embeddings', False)
+        self.tanh_layers = cfg.get('tanh_layers', 0)
 
     def save_to_file(self, model_fname):
         """Save the predictor to a file (actually two files, one for configuration and one
@@ -75,7 +84,7 @@ class RatingPredictor(TFModel):
         """Save a checkpoint to a temporary path; set `self.checkpoint_path` to the path
         where it is saved; if called repeatedly, will always overwrite the last checkpoint."""
         if not self.checkpoint_path:
-            fh, path = tempfile.mkstemp(".ckpt", "tftreecl-", self.checkpoint_path)
+            fh, path = tempfile.mkstemp(".ckpt", "ratpred-", self.checkpoint_path)
             self.checkpoint_path = path
         log_info('Saving checkpoint to %s' % self.checkpoint_path)
         self.saver.save(self.session, self.checkpoint_path)
@@ -105,9 +114,10 @@ class RatingPredictor(TFModel):
         ret.saver.restore(ret.session, tf_session_fname)
         return ret
 
-    def train(self, inputs, targets, data_portion=1.0):
+    def train(self, train_data_file, data_portion=1.0):
         """Run training on the given training data.
         """
+        inputs, targets = read_data(train_data_file, self.target_col, self.delex_slots)
 
         log_info('Training rating predictor...')
 
@@ -144,7 +154,7 @@ class RatingPredictor(TFModel):
         inputs_hyp = np.array([self.embs.get_embeddings(sent) for sent in hyps])
         fd = {}
         self._add_inputs_to_feed_dict(inputs_ref, inputs_hyp, fd)
-        return self.session.run(self.outputs, feed_dict=fd)
+        return self.session.run(self.output, feed_dict=fd)
 
     def _init_training(self, inputs, targets, data_portion=1.0):
         """Initialize training.
@@ -209,25 +219,47 @@ class RatingPredictor(TFModel):
         self.session = tf.Session(config=session_config)
 
         # this helps us load/save the model
-        self.saver = tf.train.Saver(tf.all_variables())
+        self.saver = tf.train.Saver(tf.all_variables(), write_version=tf.train.SaverDef.V2)
+
+        log_info("TF variables:\n" + "\n".join([v.name for v in tf.all_variables()]))
 
     def _rnn(self, name, enc_inputs_ref, enc_inputs_hyp):
-        with tf.variable_scope('enc_ref'):
+        with tf.variable_scope('enc_ref') as scope:
             enc_cell_ref = tf.nn.rnn_cell.EmbeddingWrapper(self.cell, self.dict_size, self.emb_size)
             enc_outs_ref, enc_state_ref = tf.nn.rnn(enc_cell_ref, enc_inputs_ref, dtype=tf.float32)
+            if self.reuse_embeddings:
+                scope.reuse_variables()
+                enc_cell_hyp = tf.nn.rnn_cell.EmbeddingWrapper(self.cell, self.dict_size, self.emb_size)
+                enc_outs_hyp, enc_state_hyp = tf.nn.rnn(enc_cell_hyp, enc_inputs_hyp, dtype=tf.float32)
+
         with tf.variable_scope('enc_hyp'):
-            enc_cell_hyp = tf.nn.rnn_cell.EmbeddingWrapper(self.cell, self.dict_size, self.emb_size)
-            enc_outs_hyp, enc_state_hyp = tf.nn.rnn(enc_cell_hyp, enc_inputs_hyp, dtype=tf.float32)
+            if not self.reuse_embeddings:
+                enc_cell_hyp = tf.nn.rnn_cell.EmbeddingWrapper(self.cell, self.dict_size, self.emb_size)
+                enc_outs_hyp, enc_state_hyp = tf.nn.rnn(enc_cell_hyp, enc_inputs_hyp, dtype=tf.float32)
+
+        # LSTM state contains the output
+        last_outs_and_states = tf.concat(1, [enc_state_ref.c, enc_state_ref.h,
+                                             enc_state_hyp.c, enc_state_hyp.h])
+        hidden = last_outs_and_states
+
+        if self.tanh_layers > 0:
+            with tf.variable_scope('hidden'):
+                for layer_no in xrange(self.tanh_layers):
+                    h_w = tf.get_variable(name + '-w' + str(layer_no + 1),
+                                          ((self.cell.state_size.c + self.cell.state_size.h) * 2,
+                                           (self.cell.state_size.c + self.cell.state_size.h) * 2),
+                                          initializer=tf.random_normal_initializer(stddev=0.1))
+                    h_b = tf.get_variable(name + '-b' + str(layer_no + 1),
+                                          ((self.cell.state_size.c + self.cell.state_size.h) * 2,),
+                                          initializer=tf.constant_initializer())
+                    hidden = tf.tanh(tf.matmul(hidden, h_w) + h_b)
 
         with tf.variable_scope('classif'):
             w = tf.get_variable(name + '-w', ((self.cell.state_size.c + self.cell.state_size.h) * 2, 1),
                                 initializer=tf.random_normal_initializer(stddev=0.1))
             b = tf.get_variable(name + '-b', (1,), initializer=tf.constant_initializer())
 
-        # LSTM state contains the output
-        last_outs_and_states = tf.concat(1, [enc_state_ref.c, enc_state_ref.h,
-                                             enc_state_hyp.c, enc_state_hyp.h])
-        return tf.matmul(last_outs_and_states, w) + b
+        return tf.matmul(hidden, w) + b
 
     def _batches(self):
         """Create batches from the input; use as iterator."""
@@ -261,8 +293,8 @@ class RatingPredictor(TFModel):
         for inst_nos in self._batches():
 
             log_debug('INST-NOS: ' + str(inst_nos))
-            log_debug("\n".join(unicode(self.train_refs[i]) + "\n" +
-                                unicode(self.train_refs[i]) + "\n" +
+            log_debug("\n".join(' '.join([tok for tok, _ in self.train_refs[i]]) + "\n" +
+                                ' '.join([tok for tok, _ in self.train_hyps[i]]) + "\n" +
                                 unicode(self.y[i])
                                 for i in inst_nos))
 
@@ -288,7 +320,7 @@ class RatingPredictor(TFModel):
         """
         """
         dist = 0.0
-        for (input_ref, input_hyp), target in zip(inputs, targets):
+        for (da, input_ref, input_hyp), target in zip(inputs, targets):
             rating = self.rate([input_ref], [input_hyp])
             dist += abs(rating - target)
         return dist
