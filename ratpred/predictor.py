@@ -36,6 +36,7 @@ class RatingPredictor(TFModel):
                                               cfg.get('scope_suffix', ''))
         self.cfg = cfg
         self.emb_size = cfg.get('emb_size', 50)
+        cfg['reverse'] = True  # embeddings should always be reversed
         self.embs = TokenEmbeddingSeq2SeqExtract(cfg)
         self.num_hidden_units = cfg.get('num_hidden_units', 512)
 
@@ -78,6 +79,7 @@ class RatingPredictor(TFModel):
                 'embs': self.embs, }
         if self.embs:
             data['dict_size'] = self.dict_size
+            data['input_shape'] = self.input_shape
         return data
 
     def _save_checkpoint(self):
@@ -184,7 +186,7 @@ class RatingPredictor(TFModel):
         # initialize NN classifier
         self._init_neural_network()
         # initialize the NN variables
-        self.session.run(tf.initialize_all_variables())
+        self.session.run(tf.global_variables_initializer())
 
     def _init_neural_network(self):
         """Create the neural network for classification"""
@@ -219,9 +221,7 @@ class RatingPredictor(TFModel):
         self.session = tf.Session(config=session_config)
 
         # this helps us load/save the model
-        self.saver = tf.train.Saver(tf.all_variables(), write_version=tf.train.SaverDef.V2)
-
-        log_info("TF variables:\n" + "\n".join([v.name for v in tf.all_variables()]))
+        self.saver = tf.train.Saver(tf.global_variables(), write_version=tf.train.SaverDef.V2)
 
     def _rnn(self, name, enc_inputs_ref, enc_inputs_hyp):
         with tf.variable_scope('enc_ref') as scope:
