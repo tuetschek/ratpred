@@ -40,8 +40,9 @@ def test(args):
     log_info("Loading test data from %s..." % args.test_data)
     inputs, targets = read_data(args.test_data, rp.target_col, rp.delex_slots)
 
+    log_info("Rating %d instances..." % len(inputs))
     dist = rp.evaluate(inputs, targets)
-    log_info("Distance: %.3f" % dist)
+    log_info("Distance: %.3f (avg: %.3f)" % (dist, dist / len(inputs)))
 
 
 
