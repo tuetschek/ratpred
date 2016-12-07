@@ -7,8 +7,8 @@ SHELL = /bin/bash
 RATPRED = ../run_ratpred.py
 MEM = 8g
 CPUS = 4
-QP = --queue troja-all.q
-QSUBMIT = qsubmit --logdir '$(TRY_DIR)' --mem $(MEM) --cores $(CPUS) --jobname T.$(TRY_NUM).$(RUN_NAME) $(QP) $(QHOLD)# using OB's qsubmit script
+QP = --queue longq
+QSUBMIT = qsubmit --logdir '$(TRY_DIR)' --mem $(MEM) --cores $(CPUS) --jobname R.$(TRY_NUM).$(RUN_NAME) $(QP) $(QHOLD)# using OB's qsubmit script
 ifdef DEBUG
   DEBUG_LOG_TRAIN = -d $(TRY_DIR)/train.debug-log.txt.gz
   DEBUG_LOG_TEST = -d $(TRY_DIR)/test.debug-log.txt
@@ -155,7 +155,7 @@ cv_score-%:
 	make cv_score TRY_DIR=$(TRY_DIR) TRY_NUM=$(TRY_NUM)
 
 cv_score:
-	$(AVERAGE_SCORES) $(TRY_DIR)/*/T.*.*_test.o* | tee $(TRY_DIR)/test.log.txt
+	$(AVERAGE_SCORES) $(TRY_DIR)/*/R.*.*_test.o* | tee $(TRY_DIR)/test.log.txt
 
 score-%:
 	$(eval TRY_DIR := $(shell ls -d $(RUNS_DIR)/$**))
@@ -163,7 +163,7 @@ score-%:
 	make score TRY_DIR=$(TRY_DIR) TRY_NUM=$(TRY_NUM)
 
 score:
-	$(AVERAGE_SCORES) $(TRY_DIR)/T.*.*_test.o* | tee $(TRY_DIR)/test.log.txt
+	$(AVERAGE_SCORES) $(TRY_DIR)/R.*.*_test.o* | tee $(TRY_DIR)/test.log.txt
 
 train: RUN_NAME := train
 train: prepare_dir
@@ -199,7 +199,7 @@ test_process:
 
 # Rerun an experiment (TRY_DIR, TRY_NUM, RUN_NAME must be set!)
 rerun:
-	LAST_LOGFILE=`ls -t $(TRY_DIR)/T.*.$(RUN_NAME).* | head -n 1` ; \
+	LAST_LOGFILE=`ls -t $(TRY_DIR)/R.*.$(RUN_NAME).* | head -n 1` ; \
 	COMMAND=`cat $$LAST_LOGFILE | sed '1,/^== Directory/d;/^== Hard res/,$$d;s/^== Command:\s*//;'` ; \
 	echo "Rerunning command: $$COMMAND"; \
 	$(QSUBMIT) "$$COMMAND" 2>&1 | tee -a $(TRY_DIR)/$(RUN_NAME).log.txt ;
