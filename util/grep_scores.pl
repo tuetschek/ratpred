@@ -43,12 +43,12 @@ while ( my $line = <$fh> ) {
     if ( $line =~ /(Distance:)/i ) {
         $line =~ s/.*avg:/D/i;
         $line =~ s/\)$//;
-        $pr = rg( 0, 5 , $line, 1 ) . "D $p\e[0m";
+        $pr = rg( 0, 5 , $line, 1 ) . "D $line\e[0m";
     }
     if ( $line =~ /(Accuracy:)/i ) {
         $line =~ s/.*Accuracy:/A/i;
         $line =~ s/%.*//;
-        $pr .= rg( 0, 5 , $line, 1 ) . "A $p\e[0m";
+        $pr .= rg( 0, 5 , $line, 1 ) . "A $line\e[0m";
     }
 }
 

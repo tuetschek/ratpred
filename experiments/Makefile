@@ -9,6 +9,9 @@ MEM = 8g
 CPUS = 4
 QP = --queue longq
 QSUBMIT = qsubmit --logdir '$(TRY_DIR)' --mem $(MEM) --cores $(CPUS) --jobname R.$(TRY_NUM).$(RUN_NAME) $(QP) $(QHOLD)# using OB's qsubmit script
+TRAIN_PORTION=1.0
+ACTIVATE = echo -n # source your activate script instead
+
 ifdef DEBUG
   DEBUG_LOG_TRAIN = -d $(TRY_DIR)/train.debug-log.txt.gz
   DEBUG_LOG_TEST = -d $(TRY_DIR)/test.debug-log.txt
@@ -145,7 +148,7 @@ cv_run:
 		TRAIN_RUN=train ; \
 		TEST_RUN=test_cv ; \
 		make $$TRAIN_RUN TRY_DIR=$(TRY_DIR)/$$SEED SEED=$$SEED TRY_NUM=$(TRY_NUM) 2>&1 | tee -a $(TRY_DIR)/cv.log.txt ; \
-		JOB_NUM=`cat $(TRY_DIR)/cv.log.txt | grep '^Your job' | tail -n 1 | sed 's/^Your job \([0-9]\+\).*/\1/;' ` ; \
+		JOB_NUM=`cat $(TRY_DIR)/cv.log.txt | grep '^\(Your job\|Submitted batch\)' | tail -n 1 | sed 's/^\(Your\|Submitted batch\) job \([0-9]\+\).*/\2/;' ` ; \
 		make $$TEST_RUN TRY_DIR=$(TRY_DIR)/$$SEED TRY_NUM=$(TRY_NUM) QP="$(QP)" QHOLD="--hold $$JOB_NUM"; \
 	done
 
