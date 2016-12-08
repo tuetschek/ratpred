@@ -11,6 +11,7 @@ from flect.config import Config
 from tgen.logf import log_info, set_debug_stream
 from tgen.debug import exc_info_hook
 from tgen.futil import file_stream
+from tgen.rnd import rnd
 
 from ratpred.futil import read_data
 from ratpred.predictor import RatingPredictor
@@ -20,6 +21,9 @@ sys.excepthook = exc_info_hook
 
 
 def train(args):
+
+    if args.random_seed:  # set random seed if needed
+        rnd.seed(args.random_seed)
 
     log_info("Loading configuration from %s..." % args.config_file)
     cfg = Config(args.config_file)
@@ -41,7 +45,7 @@ def test(args):
     inputs, targets = read_data(args.test_data, rp.target_col, rp.delex_slots)
 
     log_info("Rating %d instances..." % len(inputs))
-    dist = rp.evaluate(inputs, targets)
+    dist = rp.evaluate(inputs, targets, args.write_outputs)
     log_info("Distance: %.3f (avg: %.3f)" % (dist, dist / len(inputs)))
 
 
@@ -55,11 +59,16 @@ def main():
     ap_train = subp.add_parser('train', help='Train a new rating predictor')
     ap_train.add_argument('-p', '--training-portion', type=float,
                           help='Part of data used for traing', default=1.0)
+    ap_train.add_argument('-r', '--random-seed', type=str,
+                          help='String to use as a random seed', default=None)
     ap_train.add_argument('config_file', type=str, help='Path to the configuration file')
     ap_train.add_argument('train_data', type=str, help='Path to the training data TSV file')
     ap_train.add_argument('model_file', type=str, help='Path where to store the predictor model')
 
     ap_test = subp.add_parser('test', help='Test a trained predictor on given data')
+    ap_test.add_argument('-w', '--write-outputs', type=str,
+                         help='Path to a prediction output file (not written when empty)',
+                         default=None)
     ap_test.add_argument('model_file', type=str, help='Path to a trained predictor model')
     ap_test.add_argument('test_data', type=str, help='Path to the test data TSV file')
 

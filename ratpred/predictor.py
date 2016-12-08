@@ -25,7 +25,7 @@ from tgen.rnd import rnd
 from tgen.embeddings import TokenEmbeddingSeq2SeqExtract
 from tgen.tf_ml import TFModel
 
-from ratpred.futil import read_data
+from ratpred.futil import read_data, write_outputs
 
 
 class RatingPredictor(TFModel):
@@ -316,11 +316,18 @@ class RatingPredictor(TFModel):
     def _print_pass_stats(self, pass_no, time, cost):
         log_info('PASS %03d: duration %s, cost %f' % (pass_no, str(time), cost))
 
-    def evaluate(self, inputs, targets):
+    def evaluate(self, inputs, targets, output_file=None):
         """
         """
         dist = 0.0
+        correct = 0
+        ratings = []
         for (da, input_ref, input_hyp), target in zip(inputs, targets):
             rating = self.rate([input_ref], [input_hyp])
+            ratings.append(rating)
             dist += abs(rating - target)
-        return dist
+            if round(rating) == round(target):
+                correct += 1
+        if output_file:
+            write_outputs(output_file, inputs, targets, outputs)
+        return dist, float(correct) / len(inputs)
