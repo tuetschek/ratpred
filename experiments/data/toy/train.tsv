@@ -1,0 +1,6 @@
+mr	original_ref_not_modified	system_ref	quality
+inform(value=good)	this is bad	this is good	1
+inform(value=good)	this is good	this is good	6
+inform(value=mediocre)	this is mediocre	this is good	3
+inform(value=good)	that is good	that is good	6
+inform(value=bad)	that is bad	that is bad	6
