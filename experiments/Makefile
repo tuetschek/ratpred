@@ -152,7 +152,10 @@ cv_run:
 		TEST_RUN=test_cv ; \
 		make $$TRAIN_RUN TRY_DIR=$(TRY_DIR)/$$SEED SEED=$$SEED TRY_NUM=$(TRY_NUM) 2>&1 | tee -a $(TRY_DIR)/cv.log.txt ; \
 		JOB_NUM=`cat $(TRY_DIR)/cv.log.txt | grep '^\(Your job\|Submitted batch\)' | tail -n 1 | sed 's/^\(Your\|Submitted batch\) job \([0-9]\+\).*/\2/;' ` ; \
-		make $$TEST_RUN TRY_DIR=$(TRY_DIR)/$$SEED TRY_NUM=$(TRY_NUM) QP="$(QP)" QHOLD="--hold $$JOB_NUM"; \
+		if [ -n "$$JOB_NUM" ]; then \
+		    QHOLD="--hold $$JOB_NUM"; \
+		fi ; \
+		make $$TEST_RUN TRY_DIR=$(TRY_DIR)/$$SEED TRY_NUM=$(TRY_NUM) QP="$(QP)" QHOLD="$$QHOLD"; \
 	done
 
 cv_score-%:
