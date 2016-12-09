@@ -14,7 +14,7 @@ from tgen.delex import delex_sent
 
 
 def read_data(filename, target_col, delex_slots):
-    data = pd.read_csv(filename, sep="\t", encoding='UTF-8')
+    data = pd.read_csv(filename, sep=b"\t", encoding='UTF-8')
 
     das = [DA.parse_cambridge_da(da) for da in data['mr']]
     texts_ref = [[(tok, None)
@@ -41,5 +41,5 @@ def write_outputs(filename, inputs, targets, outputs):
                        'system_output': input_hyps,
                        'human_rating': targets,
                        'system_rating': outputs})
-    df.to_csv(filename, sep="\t")
+    df.to_csv(filename, sep=b"\t")
 
