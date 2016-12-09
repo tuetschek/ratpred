@@ -31,7 +31,7 @@ def train(args):
     log_info("Initializing...")
     rp = RatingPredictor(cfg)
     log_info("Training...")
-    rp.train(args.train_data, args.training_portion)
+    rp.train(args.train_data, valid_data_file=args.valid_data, data_portion=args.training_portion)
     log_info("Saving model to %s..." % args.model_file)
     rp.save_to_file(args.model_file)
 
@@ -45,9 +45,9 @@ def test(args):
     inputs, targets = read_data(args.test_data, rp.target_col, rp.delex_slots)
 
     log_info("Rating %d instances..." % len(inputs))
-    dist = rp.evaluate(inputs, targets, args.write_outputs)
+    dist, acc = rp.evaluate(inputs, targets, args.write_outputs)
     log_info("Distance: %.3f (avg: %.3f)" % (dist, dist / len(inputs)))
-
+    log_info("Accuracy: %.3f" % acc)
 
 
 def main():
@@ -61,6 +61,8 @@ def main():
                           help='Part of data used for traing', default=1.0)
     ap_train.add_argument('-r', '--random-seed', type=str,
                           help='String to use as a random seed', default=None)
+    ap_train.add_argument('-v', '--valid-data', type=str,
+                          help='Path to validation data file', default=None)
     ap_train.add_argument('config_file', type=str, help='Path to the configuration file')
     ap_train.add_argument('train_data', type=str, help='Path to the training data TSV file')
     ap_train.add_argument('model_file', type=str, help='Path where to store the predictor model')
@@ -81,7 +83,6 @@ def main():
         train(args)
     else:
         test(args)
-
 
 
 if __name__ == '__main__':
