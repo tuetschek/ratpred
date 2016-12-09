@@ -207,8 +207,10 @@ class RatingPredictor(TFModel):
             self.cell = tf.nn.rnn_cell.BasicLSTMCell(self.emb_size)
             self.output = self._rnn('rnn', self.inputs_ref, self.inputs_hyp)
 
-        # RSS cost (TODO divide by number of examples??)
-        self.cost = tf.reduce_sum(tf.pow(self.target - self.output, 2))
+        # mean square error cost
+        # NB: needed to transpose the outputs to have the same shape; it worked otherwise
+        # but did not learn (see here: http://stackoverflow.com/questions/38399609/ )
+        self.cost = tf.reduce_mean(tf.square(self.target - tf.transpose(self.output)))
 
         self.optimizer = tf.train.AdamOptimizer(self.alpha)
         self.train_func = self.optimizer.minimize(self.cost)
