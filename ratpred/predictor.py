@@ -174,9 +174,12 @@ class RatingPredictor(TFModel):
         self.valid_inputs = (self.train_das[-self.validation_size:],
                            self.train_refs[-self.validation_size:],
                            self.train_hyps[-self.validation_size:])
+        self.valid_y = self.y[-self.validation_size:]
+        self.y = self.y[:-self.validation_size]
         self.train_das = self.train_das[:-self.validation_size]
         self.train_refs = self.train_refs[:-self.validation_size]
         self.train_hyps = self.train_hyps[:-self.validation_size]
+
 
     def _init_training(self, inputs, targets,
                        valid_inputs=None, valid_targets=None, data_portion=1.0):
@@ -189,7 +192,7 @@ class RatingPredictor(TFModel):
         self.train_das, self.train_refs, self.train_hyps = self._divide_inputs(inputs, train_size)
         self.y = targets[:train_size]
 
-        self.valid_inputs = None
+        self.valid_inputs, self.valid_y = None, None
         if valid_inputs is not None and valid_targets is not None:
             self.valid_inputs = self._divide_inputs(valid_inputs)
             self.valid_y = valid_targets

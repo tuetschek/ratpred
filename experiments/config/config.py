@@ -17,7 +17,7 @@ config = {
           'validation_size': 100,
           'validation_freq': 1,
           'target_col': 'quality',
-          'target_col': 'informativeness',
+          #'target_col': 'informativeness',
           #'target_col': 'naturalness',
           'delex_slots': 'name,postcode,address,near,area,phone,addr,count',
           'reuse_embeddings': False,
