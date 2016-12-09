@@ -66,7 +66,7 @@ $training_data = $training_set . ' -> ' . ( ( $config_data =~ /'target_col'\s*:\
 # gadgets
 $nn_shape .= ' E' . ( ( $config_data =~ /'emb_size'\s*:\s*([0-9]*)/ )[0] // 50 );
 $nn_shape .= '-N' . ( ( $config_data =~ /'num_hidden_units'\s*:\s*([0-9]*)/ )[0] // 128 );
-$nn_shape .= '-N' . ( ( $config_data =~ /'tanh_layers'\s*:\s*([0-9]*)/ )[0] // 0 );
+$nn_shape .= '-T' . ( ( $config_data =~ /'tanh_layers'\s*:\s*([0-9]*)/ )[0] // 0 );
 
 if ( $config_data =~ /'dropout_keep_prob'\s*:\s*(0\.[0-9]*)/ ){
     $nn_shape .= '-D' . ( $config_data =~ /'dropout_keep_prob'\s*:\s*(0\.[0-9]*)/ )[0];
