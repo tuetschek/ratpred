@@ -20,7 +20,7 @@ def read_data(filename, target_col, delex_slots):
     texts_ref = [[(tok, None)
                   for tok in delex_sent(da, tokenize(sent.lower()).split(' '),
                                         delex_slots, True)[0]]
-                 for da, sent in zip(das, data['original_ref_not_modified'])]
+                 for da, sent in zip(das, data['orig_ref'])]
     texts_hyp = [[(tok, None)
                   for tok in delex_sent(da, tokenize(sent.lower()).split(' '),
                                         delex_slots, True)[0]]
