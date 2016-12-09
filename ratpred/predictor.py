@@ -12,8 +12,7 @@ import datetime
 import sys
 import re
 import math
-import tempfile
-import shutil
+import os.path
 
 import numpy as np
 import tensorflow as tf
@@ -46,6 +45,7 @@ class RatingPredictor(TFModel):
         self.randomize = cfg.get('randomize', True)
         self.batch_size = cfg.get('batch_size', 1)
 
+        self.validation_size = cfg.get('validation_size', 0)
         self.validation_freq = cfg.get('validation_freq', 10)
         self.max_cores = cfg.get('max_cores')
         self.checkpoint = None
@@ -108,20 +108,23 @@ class RatingPredictor(TFModel):
             ret.load_all_settings(data)
 
         # re-build TF graph and restore the TF session
-        tf_session_fname = re.sub(r'(.pickle)?(.gz)?$', '.tfsess', model_fname)
+        tf_session_fname = os.path.abspath(re.sub(r'(.pickle)?(.gz)?$', '.tfsess', model_fname))
         ret._init_neural_network()
         ret.saver.restore(ret.session, tf_session_fname)
         return ret
 
-    def train(self, train_data_file, data_portion=1.0):
+    def train(self, train_data_file, valid_data_file=None, data_portion=1.0):
         """Run training on the given training data.
         """
         inputs, targets = read_data(train_data_file, self.target_col, self.delex_slots)
-
+        valid_inputs, valid_targets = None, None
+        if valid_data_file:
+            valid_inputs, valid_targets = read_data(valid_data_file,
+                                                    self.target_col, self.delex_slots)
         log_info('Training rating predictor...')
 
         # initialize training
-        self._init_training(inputs, targets, data_portion)
+        self._init_training(inputs, targets, valid_inputs, valid_targets, data_portion)
 
         # start training
         top_cost = float('nan')
@@ -132,11 +135,16 @@ class RatingPredictor(TFModel):
                 rnd.shuffle(self.train_order)
             pass_cost = self._training_pass(iter_no)
 
-            if self.validation_freq and iter_no > self.min_passes and iter_no % self.validation_freq == 0:
+            if (self.valid_inputs and self.validation_freq and
+                    iter_no > self.min_passes and iter_no % self.validation_freq == 0):
+
+                valid_dist, valid_acc = self.evaluate(self.valid_inputs, self.valid_y)
+                log_info('Validation distance: %.3f (avg: %.3f), accuracy %.3f' %
+                         (valid_dist, valid_dist / len(self.valid_inputs), valid_acc))
 
                 # TODO use validation data here
-                comb_cost = pass_cost
-                log_info('Cost: %8.3f' % comb_cost)
+                comb_cost = len(self.valid_inputs) * valid_acc + 100 * valid_dist + pass_cost
+                log_info('Combined validation cost: %.3f' % comb_cost)
 
                 # if we have the best model so far, save it as a checkpoint (overwrite previous)
                 if math.isnan(top_cost) or comb_cost < top_cost:
@@ -153,21 +161,43 @@ class RatingPredictor(TFModel):
         inputs_hyp = np.array([self.embs.get_embeddings(sent) for sent in hyps])
         fd = {}
         self._add_inputs_to_feed_dict(inputs_ref, inputs_hyp, fd)
+        # TODO possibly need to transpose the output here as well
         return self.session.run(self.output, feed_dict=fd)
 
-    def _init_training(self, inputs, targets, data_portion=1.0):
+    def _divide_inputs(self, inputs, trunc_size=None):
+        size = trunc_size if trunc_size is not None else len(inputs)
+        return ([da for da, _, _ in inputs[:size]],
+                [ref for _, ref, _ in inputs[:size]],
+                [hyp for _, _, hyp in inputs[:size]])
+
+    def _cut_valid_data(self):
+        self.valid_inputs = (self.train_das[-self.validation_size:],
+                           self.train_refs[-self.validation_size:],
+                           self.train_hyps[-self.validation_size:])
+        self.train_das = self.train_das[:-self.validation_size]
+        self.train_refs = self.train_refs[:-self.validation_size]
+        self.train_hyps = self.train_hyps[:-self.validation_size]
+
+    def _init_training(self, inputs, targets,
+                       valid_inputs=None, valid_targets=None, data_portion=1.0):
         """Initialize training.
 
         @param data_portion: portion of the training data to be used (0.0-1.0)
         """
         # store training data, make it smaller if necessary
         train_size = int(round(data_portion * len(inputs)))
-        self.train_das = [da for da, _, _ in inputs[:train_size]]
-        self.train_refs = [ref for _, ref, _ in inputs[:train_size]]
-        self.train_hyps = [hyp for _, _, hyp in inputs[:train_size]]
+        self.train_das, self.train_refs, self.train_hyps = self._divide_inputs(inputs, train_size)
         self.y = targets[:train_size]
+
+        self.valid_inputs = None
+        if valid_inputs is not None and valid_targets is not None:
+            self.valid_inputs = self._divide_inputs(valid_inputs)
+            self.valid_y = valid_targets
+        elif self.validation_size > 0:
+            self._cut_valid_data()
+
         self.train_order = range(len(self.train_refs))
-        log_info('Using %d training instances.' % train_size)
+        log_info('Using %d training instances.' % len(self.train_refs))
 
         # initialize input embeddings
         self.dict_size = self.embs.init_dict(self.train_refs)
@@ -318,15 +348,19 @@ class RatingPredictor(TFModel):
     def evaluate(self, inputs, targets, output_file=None):
         """
         """
+        if isinstance(inputs, tuple):
+            das, input_refs, input_hyps = inputs
+        else:
+            das, input_refs, input_hyps = self._divide_inputs(inputs)
         dist = 0.0
         correct = 0
         ratings = []
-        for (da, input_ref, input_hyp), target in zip(inputs, targets):
+        for da, input_ref, input_hyp, target in zip(das, input_refs, input_hyps, targets):
             rating = self.rate([input_ref], [input_hyp])
             ratings.append(rating)
             dist += abs(rating - target)
             if round(rating) == round(target):
                 correct += 1
         if output_file:
-            write_outputs(output_file, inputs, targets, outputs)
-        return dist, float(correct) / len(inputs)
+            write_outputs(output_file, inputs, targets, ratings)
+        return dist, float(correct) / len(input_refs)
