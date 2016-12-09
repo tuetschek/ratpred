@@ -48,7 +48,7 @@ class RatingPredictor(TFModel):
 
         self.validation_freq = cfg.get('validation_freq', 10)
         self.max_cores = cfg.get('max_cores')
-        self.checkpoint_path = None
+        self.checkpoint = None
 
         self.target_col = cfg.get('target_col', 'quality')
         self.delex_slots = cfg.get('delex_slots', set())
@@ -68,10 +68,7 @@ class RatingPredictor(TFModel):
         with file_stream(model_fname, 'wb', encoding=None) as fh:
             pickle.dump(self.get_all_settings(), fh, protocol=pickle.HIGHEST_PROTOCOL)
         tf_session_fname = re.sub(r'(.pickle)?(.gz)?$', '.tfsess', model_fname)
-        if self.checkpoint_path:
-            shutil.copyfile(self.checkpoint_path, tf_session_fname)
-        else:
-            self.saver.save(self.session, tf_session_fname)
+        self.saver.save(self.session, tf_session_fname)
 
     def get_all_settings(self):
         """Get all settings except the trained model parameters (to be stored in a pickle)."""
@@ -83,18 +80,18 @@ class RatingPredictor(TFModel):
         return data
 
     def _save_checkpoint(self):
-        """Save a checkpoint to a temporary path; set `self.checkpoint_path` to the path
-        where it is saved; if called repeatedly, will always overwrite the last checkpoint."""
-        if not self.checkpoint_path:
-            fh, path = tempfile.mkstemp(".ckpt", "ratpred-", self.checkpoint_path)
-            self.checkpoint_path = path
-        log_info('Saving checkpoint to %s' % self.checkpoint_path)
-        self.saver.save(self.session, self.checkpoint_path)
+        """Store an in-memory checkpoint containing all variables and settings of the model.
+        Will always overwrite the last checkpoint."""
+        log_info('Storing in-memory checkpoint...')
+        self.checkpoint = (self.get_all_settings(), self.get_model_params())
 
     def restore_checkpoint(self):
-        if not self.checkpoint_path:
+        if not self.checkpoint:
             return
-        self.saver.restore(self.session, self.checkpoint_path)
+        log_info('Restoring in-memory checkpoint...')
+        settings, params = self.checkpoint
+        self.load_all_settings(settings)
+        self.set_model_params(params)
 
     @staticmethod
     def load_from_file(model_fname):
