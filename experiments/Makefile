@@ -8,6 +8,9 @@ RATPRED = ../run_ratpred.py
 MEM = 8g
 CPUS = 4
 QP = --queue longq
+ifdef LOCAL
+  QP = --engine=console
+endif
 QSUBMIT = qsubmit --logdir '$(TRY_DIR)' --mem $(MEM) --cores $(CPUS) --jobname R.$(TRY_NUM).$(RUN_NAME) $(QP) $(QHOLD)# using OB's qsubmit script
 TRAIN_PORTION=1.0
 ACTIVATE = echo -n # source your activate script instead
@@ -75,7 +78,7 @@ make cv_score-XXX
 * Retrieve a score for run with RANDS.
 ---
 
-Use QP='--console' if you want the job to run interactively instead
+Use LOCAL=1 if you want the job to run interactively instead
 of submitting to the cluster.
 
 Use ACTIVATE='source path/to/virtualenv/bin/activate' to run
