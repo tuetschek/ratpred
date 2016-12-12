@@ -16,7 +16,9 @@ def convert(args):
     data = pd.read_csv(args.input_file)
     log_info("Contains %d instances." % len(data))
     if args.shuffle:
-        data.apply(np.random.shuffle, axis=0)
+        log_info("Shuffling...")
+        data = data.iloc[np.random.permutation(len(data))]
+        data.reset_index(drop=True)
     sizes = [int(part) for part in args.ratio.split(':')]
     labels = args.labels.split(':')
     total_parts = sum(sizes)
@@ -26,7 +28,7 @@ def convert(args):
     for label, size in zip(labels, sizes):
         # select the part
         # pandas doesn't respect python conventions, so we need to use -1
-        part = data.ix[offset:offset + size - 1,:]
+        part = data.iloc[offset:offset + size - 1,:]
         # write the output
         log_info("Writing part %s (size %d)..." % (label, size))
         part.to_csv(os.path.join(args.output_dir, label + '.tsv'), sep=b"\t", index=False)

@@ -36,10 +36,11 @@ def write_outputs(filename, inputs, targets, outputs):
     das = [da for da, _, _ in inputs]
     input_refs = [" ".join([tok for tok, _ in input_ref]) for _, input_ref, _ in inputs]
     input_hyps = [" ".join([tok for tok, _ in input_hyp]) for _, _, input_hyp in inputs]
+    outputs = [float(output) for output in outputs]
     df = pd.DataFrame({'mr': das,
                        'orig_ref': input_refs,
                        'system_output': input_hyps,
                        'human_rating': targets,
                        'system_rating': outputs})
-    df.to_csv(filename, sep=b"\t")
+    df.to_csv(filename, sep=b"\t", index=False)
 
