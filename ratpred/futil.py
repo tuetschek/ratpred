@@ -43,4 +43,3 @@ def write_outputs(filename, inputs, targets, outputs):
                        'human_rating': targets,
                        'system_rating': outputs})
     df.to_csv(filename, sep=b"\t", index=False)
-
