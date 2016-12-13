@@ -26,6 +26,9 @@ from tgen.tf_ml import TFModel
 
 from ratpred.futil import read_data, write_outputs
 
+def sigmoid(nums):
+    return 1 / (1 + np.exp(-nums))
+
 
 class RatingPredictor(TFModel):
 
@@ -56,6 +59,8 @@ class RatingPredictor(TFModel):
             self.delex_slots = set(self.delex_slots.split(','))
         self.reuse_embeddings = cfg.get('reuse_embeddings', False)
         self.tanh_layers = cfg.get('tanh_layers', 0)
+        self.predict_ints = cfg.get('predict_ints', False)
+        self.num_outputs = 1  # will be changed in training if predict_ints is True
 
     def save_to_file(self, model_fname):
         """Save the predictor to a file (actually two files, one for configuration and one
@@ -77,6 +82,10 @@ class RatingPredictor(TFModel):
         if self.embs:
             data['dict_size'] = self.dict_size
             data['input_shape'] = self.input_shape
+            if self.predict_ints:
+                data['num_outputs'] = self.num_outputs
+                data['outputs_range_lo'] = self.outputs_range_lo
+                data['outputs_range_hi'] = self.outputs_range_hi
         return data
 
     def _save_checkpoint(self):
@@ -140,7 +149,7 @@ class RatingPredictor(TFModel):
 
                 valid_dist, valid_acc = self.evaluate(self.valid_inputs, self.valid_y)
                 log_info('Validation distance: %.3f (avg: %.3f), accuracy %.3f' %
-                         (valid_dist, valid_dist / len(self.valid_inputs), valid_acc))
+                         (valid_dist, valid_dist / len(self.valid_inputs[0]), valid_acc))
 
                 # TODO use validation data here
                 comb_cost = len(self.valid_inputs) * valid_acc + 100 * valid_dist + pass_cost
@@ -162,7 +171,12 @@ class RatingPredictor(TFModel):
         fd = {}
         self._add_inputs_to_feed_dict(inputs_ref, inputs_hyp, fd)
         # TODO possibly need to transpose the output here as well
-        return self.session.run(self.output, feed_dict=fd)
+        val = self.session.run(self.output, feed_dict=fd)
+        if self.predict_ints:
+            # do the actual sigmoid + squeeze it into our range
+            return min(np.sum(sigmoid(val)) + self.outputs_range_lo, self.outputs_range_hi)
+        else:
+            return float(val)
 
     def _divide_inputs(self, inputs, trunc_size=None):
         size = trunc_size if trunc_size is not None else len(inputs)
@@ -172,14 +186,13 @@ class RatingPredictor(TFModel):
 
     def _cut_valid_data(self):
         self.valid_inputs = (self.train_das[-self.validation_size:],
-                           self.train_refs[-self.validation_size:],
-                           self.train_hyps[-self.validation_size:])
+                             self.train_refs[-self.validation_size:],
+                             self.train_hyps[-self.validation_size:])
         self.valid_y = self.y[-self.validation_size:]
         self.y = self.y[:-self.validation_size]
         self.train_das = self.train_das[:-self.validation_size]
         self.train_refs = self.train_refs[:-self.validation_size]
         self.train_hyps = self.train_hyps[:-self.validation_size]
-
 
     def _init_training(self, inputs, targets,
                        valid_inputs=None, valid_targets=None, data_portion=1.0):
@@ -213,10 +226,25 @@ class RatingPredictor(TFModel):
         # initialize I/O shapes
         self.input_shape = self.embs.get_embeddings_shape()
 
+        if self.predict_ints:
+            self.outputs_range_lo = int(round(min(self.y)))
+            self.outputs_range_hi = int(round(max(self.y)))
+            self.y = self._ints_to_binary(self.y)
+            self.num_outputs = self.outputs_range_hi - self.outputs_range_lo
+        else:
+            self.num_outputs = 1  # just one real-valued output
+
         # initialize NN classifier
         self._init_neural_network()
         # initialize the NN variables
         self.session.run(tf.global_variables_initializer())
+
+    def _ints_to_binary(self, ints):
+        """Transform input int values into list of binaries (1's lower than the int, 0's higher)."""
+        ints = [[0 if val < i + 0.5 else 1
+                 for i in xrange(self.outputs_range_lo, self.outputs_range_hi)]
+                for val in ints]
+        return np.array(ints)
 
     def _init_neural_network(self):
         """Create the neural network for classification"""
@@ -224,7 +252,7 @@ class RatingPredictor(TFModel):
         # set TensorFlow random seed
         tf.set_random_seed(rnd.randint(-sys.maxint, sys.maxint))
 
-        self.target = tf.placeholder(tf.float32, [None], name='target')
+        self.target = tf.placeholder(tf.float32, [None, self.num_outputs], name='target')
 
         with tf.variable_scope(self.scope_name):
 
@@ -237,10 +265,16 @@ class RatingPredictor(TFModel):
             self.cell = tf.nn.rnn_cell.BasicLSTMCell(self.emb_size)
             self.output = self._rnn('rnn', self.inputs_ref, self.inputs_hyp)
 
-        # mean square error cost
-        # NB: needed to transpose the outputs to have the same shape; it worked otherwise
-        # but did not learn (see here: http://stackoverflow.com/questions/38399609/ )
-        self.cost = tf.reduce_mean(tf.square(self.target - tf.transpose(self.output)))
+        if self.predict_ints:
+            # sigmoid cost -- predict a bunch of 1's and 0's (not just one 1)
+            self.cost = tf.reduce_mean(tf.reduce_sum(
+                tf.nn.sigmoid_cross_entropy_with_logits(self.output, self.target, name='CE'),
+                axis=1))
+        else:
+            # mean square error cost -- predict 1 number
+            # NB: needed to transpose the outputs to have the same shape; it worked otherwise
+            # but did not learn (see here: http://stackoverflow.com/questions/38399609/ )
+            self.cost = tf.reduce_mean(tf.square(self.target - tf.transpose(self.output)))
 
         self.optimizer = tf.train.AdamOptimizer(self.alpha)
         self.train_func = self.optimizer.minimize(self.cost)
@@ -289,7 +323,7 @@ class RatingPredictor(TFModel):
         with tf.variable_scope('classif'):
             w = tf.get_variable(name + '-w', ((self.cell.state_size.c + self.cell.state_size.h) * 2, 1),
                                 initializer=tf.random_normal_initializer(stddev=0.1))
-            b = tf.get_variable(name + '-b', (1,), initializer=tf.constant_initializer())
+            b = tf.get_variable(name + '-b', (self.num_outputs,), initializer=tf.constant_initializer())
 
         return tf.matmul(hidden, w) + b
 
