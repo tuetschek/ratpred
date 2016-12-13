@@ -10,12 +10,11 @@ use File::Basename;
 use File::stat;
 use Getopt::Long;
 
-my $USAGE = "Usage: ./$0 [--bleu-range=40:60] [--nist-range=3:6] file1.log file2.log [...]\n";
+my $USAGE = "Usage: ./$0 [--dist-range=5] file1.log file2.log [...]\n";
 
-my ( $bleu_range, $nist_range ) = ( '40:80', '3:6' );
+my ( $dist_range ) = ( 5 );
 GetOptions(
-    'bleu-range|bleu|b=s' => \$bleu_range,
-    'nist-range|nist|n=s' => \$nist_range,
+    'dist-range|dist|d=i' => \$dist_range,
 ) or die($USAGE);
 die($USAGE) if ( !@ARGV );
 
@@ -41,14 +40,13 @@ while ( my $line = <$fh> ) {
     chomp $line;
 
     if ( $line =~ /(Distance:)/i ) {
-        $line =~ s/.*avg:/D/i;
+        $line =~ s/.*avg://i;
         $line =~ s/\)$//;
-        $pr = rg( 0, 5 , $line, 1 ) . "D $line\e[0m";
+        $pr = rg( 0, $dist_range , $line, 1 ) . "D $line\e[0m  ";
     }
     if ( $line =~ /(Accuracy:)/i ) {
-        $line =~ s/.*Accuracy:/A/i;
-        $line =~ s/%.*//;
-        $pr .= rg( 0, 5 , $line, 1 ) . "A $line\e[0m";
+        $line =~ s/.*Accuracy://i;
+        $pr .= rg( 0, 1 , $line ) . "A $line\e[0m";
     }
 }
 

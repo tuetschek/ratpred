@@ -23,11 +23,11 @@ ifdef DEBUG_TEST
   DEBUG_LOG_TEST = -d $(TRY_DIR)/test.debug-log.txt
 endif
 AVERAGE_SCORES = ../util/average_scores.pl
-GREP_SCORES = ../util/grep_scores.pl --bleu-range=30:50 --nist-range=4:5
+GREP_SCORES = ../util/grep_scores.pl --dist-range=2
 DESC_EXP = ../util/describe_experiment.pl
 NUM_EXP = 20  # number of experiments to list in `make desc'
 
-LOGFILES = $$file/R.* $$file/{ratpred_test.,}log.txt # logfile pattern to use for score printing
+LOGFILES = $$file/R.* $$file/{ratpred_test.,test.,}log.txt # logfile pattern to use for score printing
 SCOREFILE = SCORE
 
 # Runs directories
