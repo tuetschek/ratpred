@@ -22,4 +22,5 @@ config = {
           'delex_slots': 'name,postcode,address,near,area,phone,addr,count',
           'reuse_embeddings': False,
           'tanh_layers': 0,
+          'predict_ints': True,
         }
