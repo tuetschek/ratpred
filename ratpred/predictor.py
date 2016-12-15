@@ -232,6 +232,7 @@ class RatingPredictor(TFModel):
             self.y = self._ints_to_binary(self.y)
             self.num_outputs = self.outputs_range_hi - self.outputs_range_lo
         else:
+            self.y = np.array([[y_] for y_ in self.y])  # make my output 1-D
             self.num_outputs = 1  # just one real-valued output
 
         # initialize NN classifier
@@ -274,6 +275,7 @@ class RatingPredictor(TFModel):
             # mean square error cost -- predict 1 number
             # NB: needed to transpose the outputs to have the same shape; it worked otherwise
             # but did not learn (see here: http://stackoverflow.com/questions/38399609/ )
+            # TODO what about transpose now that I changed the target placeholder ???
             self.cost = tf.reduce_mean(tf.square(self.target - tf.transpose(self.output)))
 
         self.optimizer = tf.train.AdamOptimizer(self.alpha)
