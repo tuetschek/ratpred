@@ -164,7 +164,7 @@ cv_score-%:
 	make cv_score TRY_DIR=$(TRY_DIR) TRY_NUM=$(TRY_NUM)
 
 cv_score:
-	$(AVERAGE_SCORES) $(TRY_DIR)/*/R.*.*_test.o* | tee $(TRY_DIR)/test.log.txt
+	$(AVERAGE_SCORES) $(TRY_DIR)/*/R.*test.o* | tee $(TRY_DIR)/test.log.txt
 
 score-%:
 	$(eval TRY_DIR := $(shell ls -d $(RUNS_DIR)/$**))
@@ -172,7 +172,7 @@ score-%:
 	make score TRY_DIR=$(TRY_DIR) TRY_NUM=$(TRY_NUM)
 
 score:
-	$(AVERAGE_SCORES) $(TRY_DIR)/R.*.*_test.o* | tee $(TRY_DIR)/test.log.txt
+	$(AVERAGE_SCORES) $(TRY_DIR)/R.*test.o* | tee $(TRY_DIR)/test.log.txt
 
 train: RUN_NAME := train
 train: prepare_dir
