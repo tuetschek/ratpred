@@ -5,9 +5,9 @@
 # Environment settings
 SHELL = /bin/bash
 RATPRED = ../run_ratpred.py
-MEM = 8g
+MEM = 4g
 CPUS = 4
-QP = --queue longq
+QP = --engine=grun
 ifdef LOCAL
   QP = --engine=console
 endif
@@ -27,7 +27,7 @@ GREP_SCORES = ../util/grep_scores.pl --dist-range=2
 DESC_EXP = ../util/describe_experiment.pl
 NUM_EXP = 20  # number of experiments to list in `make desc'
 
-LOGFILES = $$file/R.* $$file/{ratpred_test.,test.,}log.txt # logfile pattern to use for score printing
+LOGFILES = $$file/R.*test* $$file/{ratpred_test.,test.,}log.txt # logfile pattern to use for score printing
 SCOREFILE = SCORE
 
 # Runs directories
@@ -151,7 +151,7 @@ cv_run:
 		TRAIN_RUN=train ; \
 		TEST_RUN=test_cv ; \
 		make $$TRAIN_RUN TRY_DIR=$(TRY_DIR)/$$SEED SEED=$$SEED TRY_NUM=$(TRY_NUM) 2>&1 | tee -a $(TRY_DIR)/cv.log.txt ; \
-		JOB_NUM=`cat $(TRY_DIR)/cv.log.txt | grep '^\(Your job\|Submitted batch\)' | tail -n 1 | sed 's/^\(Your\|Submitted batch\) job \([0-9]\+\).*/\2/;' ` ; \
+		JOB_NUM=`cat $(TRY_DIR)/cv.log.txt | grep '^\(Your job\|Submitted batch\|Job_ID\)' | tail -n 1 | sed 's/^\(Your job\|Submitted batch job\|Job_ID:\) \([0-9]\+\).*/\2/;' ` ; \
 		if [ -n "$$JOB_NUM" ]; then \
 		    QHOLD="--hold $$JOB_NUM"; \
 		fi ; \
