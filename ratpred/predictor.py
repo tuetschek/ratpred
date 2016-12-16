@@ -273,10 +273,8 @@ class RatingPredictor(TFModel):
                 axis=1))
         else:
             # mean square error cost -- predict 1 number
-            # NB: needed to transpose the outputs to have the same shape; it worked otherwise
-            # but did not learn (see here: http://stackoverflow.com/questions/38399609/ )
-            # TODO what about transpose now that I changed the target placeholder ???
-            self.cost = tf.reduce_mean(tf.square(self.target - tf.transpose(self.output)))
+            # NB: needs to compute mean over axis=0 only, otherwise it won't work (?)
+            self.cost = tf.reduce_mean(tf.square(self.target - self.output), axis=0)
 
         self.optimizer = tf.train.AdamOptimizer(self.alpha)
         self.train_func = self.optimizer.minimize(self.cost)
