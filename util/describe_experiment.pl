@@ -61,6 +61,9 @@ if ($config_data =~ /'validation_size'\s*:\s*([0-9]+)\s*,/ and $1 != 0 ){
 }
 
 # data style
+if ($portion < 1.0){
+    $training_set .= '/' . $portion;
+}
 $training_data = $training_set . ' -> ' . ( ( $config_data =~ /'target_col'\s*:\s*'([^']*)'/ )[0] // 'quality' );
 
 # gadgets
