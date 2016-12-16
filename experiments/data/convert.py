@@ -30,23 +30,40 @@ def convert(args):
         data.reset_index(drop=True)
     sizes = [int(part) for part in args.ratio.split(':')]
     labels = args.labels.split(':')
+
+    if args.devtest_crit:
+        # select dev/test data based on a criterion
+        crit_col, crit_val = args.devtest_crit.split('=')
+        train_part = data[data[crit_col] != crit_val]  # training data is everything else
+        data = data[data[crit_col] == crit_val]  # dev+test data have the criterion
+        sizes = sizes[1:]  # training size does not matter (everything not fulfilling the criterion)
+
+    # split the data into parts
+    parts = []
     total_parts = sum(sizes)
     sizes = [int(round((part / float(total_parts)) * len(data))) for part in sizes]
-    sizes[0] += len(data) - sum(sizes)  # training data take the rounding error
+    sizes[0] += len(data) - sum(sizes)  # 1st part take the rounding error
     offset = 0
-    for label, size in zip(labels, sizes):
-        # select the part
+    for size in sizes:
         # pandas doesn't respect python conventions, so we need to use -1
         part = data.iloc[offset:offset + size - 1,:]
-        # write the output
-        log_info("Writing part %s (size %d)..." % (label, size))
-        part.to_csv(os.path.join(args.output_dir, label + '.tsv'), sep=b"\t", index=False)
         offset += size
+        parts.append(part)
+
+    if args.devtest_crit:
+        parts = [train_part] + parts
+
+    for label, part in zip(labels, parts):
+        # write the output
+        log_info("Writing part %s (size %d)..." % (label, len(part)))
+        part.to_csv(os.path.join(args.output_dir, label + '.tsv'), sep=b"\t", index=False)
     log_info("Done.")
 
 
 if __name__ == '__main__':
     ap = ArgumentParser()
+    ap.add_argument('-d', '--devtest-crit', type=str, default=None,
+                    help='A criterion (column=val) for selecting devel/test examples')
     ap.add_argument('-r', '--ratio', type=str, default='3:1:1',
                     help='Train-devel-test split ratio')
     ap.add_argument('-l', '--labels', type=str, default='train:devel:test',
