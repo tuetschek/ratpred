@@ -18,7 +18,7 @@ def convert(args):
     if args.median:
         log_info("Computing medians...")
         group_cols = list(set(data.columns) - set(['informativeness', 'naturalness',
-                                                  'quality', 'judge']))
+                                                  'quality', 'judge', 'judge_id']))
         data = data.groupby(group_cols, as_index=False).median()
     if args.concat_refs:
         log_info("Concatenating all references for the same outputs...")
@@ -45,8 +45,7 @@ def convert(args):
     sizes[0] += len(data) - sum(sizes)  # 1st part take the rounding error
     offset = 0
     for size in sizes:
-        # pandas doesn't respect python conventions, so we need to use -1
-        part = data.iloc[offset:offset + size - 1,:]
+        part = data.iloc[offset:offset + size,:]
         offset += size
         parts.append(part)
 
