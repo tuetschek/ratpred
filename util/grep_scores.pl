@@ -40,9 +40,9 @@ while ( my $line = <$fh> ) {
     chomp $line;
 
     if ( $line =~ /(Distance:)/i ) {
-        $line =~ s/.*avg://i;
-        $line =~ s/\)$//;
-        $pr = rg( 0, $dist_range , $line, 1 ) . "D $line\e[0m  ";
+        my ($dist, $std) = ($line =~ /.*avg: ([0-9.]+)(?:, std: ([0-9.]+))?/);
+        $std //= '?';
+        $pr = rg( 0, $dist_range , $dist, 1 ) . "D $dist/$std\e[0m  ";
     }
     if ( $line =~ /(Accuracy:)/i ) {
         $line =~ s/.*Accuracy://i;

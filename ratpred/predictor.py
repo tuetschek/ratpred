@@ -147,7 +147,7 @@ class RatingPredictor(TFModel):
             if (self.valid_inputs and self.validation_freq and
                     iter_no > self.min_passes and iter_no % self.validation_freq == 0):
 
-                valid_dist, valid_acc = self.evaluate(self.valid_inputs, self.valid_y)
+                valid_dist, _, valid_acc = self.evaluate(self.valid_inputs, self.valid_y)
                 log_info('Validation distance: %.3f (avg: %.3f), accuracy %.3f' %
                          (valid_dist, valid_dist / len(self.valid_inputs[0]), valid_acc))
 
@@ -389,15 +389,15 @@ class RatingPredictor(TFModel):
             das, input_refs, input_hyps = inputs
         else:
             das, input_refs, input_hyps = self._divide_inputs(inputs)
-        dist = 0.0
+        dists = []
         correct = 0
         ratings = []
         for da, input_ref, input_hyp, target in zip(das, input_refs, input_hyps, targets):
             rating = self.rate([input_ref], [input_hyp])
             ratings.append(rating)
-            dist += abs(rating - target)
+            dists.append(abs(rating - target))
             if round(rating) == round(target):
                 correct += 1
         if output_file:
             write_outputs(output_file, inputs, targets, ratings)
-        return dist, float(correct) / len(input_refs)
+        return np.sum(dists), np.std(dists), float(correct) / len(input_refs)

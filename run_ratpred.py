@@ -45,8 +45,8 @@ def test(args):
     inputs, targets = read_data(args.test_data, rp.target_col, rp.delex_slots)
 
     log_info("Rating %d instances..." % len(inputs))
-    dist, acc = rp.evaluate(inputs, targets, args.write_outputs)
-    log_info("Distance: %.3f (avg: %.3f)" % (dist, dist / len(inputs)))
+    dist, std, acc = rp.evaluate(inputs, targets, args.write_outputs)
+    log_info("Distance: %.3f (avg: %.3f, std: %.3f)" % (dist, dist / len(inputs), std))
     log_info("Accuracy: %.3f" % acc)
 
 
