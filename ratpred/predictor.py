@@ -40,7 +40,6 @@ class RatingPredictor(TFModel):
         self.emb_size = cfg.get('emb_size', 50)
         cfg['reverse'] = True  # embeddings should always be reversed
         self.embs = TokenEmbeddingSeq2SeqExtract(cfg)
-        self.num_hidden_units = cfg.get('num_hidden_units', 512)
 
         self.passes = cfg.get('passes', 200)
         self.min_passes = cfg.get('min_passes', 0)
