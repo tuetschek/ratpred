@@ -68,7 +68,6 @@ $training_data = $training_set . ' -> ' . ( ( $config_data =~ /'target_col'\s*:\
 
 # gadgets
 $nn_shape .= ' E' . ( ( $config_data =~ /'emb_size'\s*:\s*([0-9]*)/ )[0] // 50 );
-$nn_shape .= '-N' . ( ( $config_data =~ /'num_hidden_units'\s*:\s*([0-9]*)/ )[0] // 128 );
 $nn_shape .= '-T' . ( ( $config_data =~ /'tanh_layers'\s*:\s*([0-9]*)/ )[0] // 0 );
 
 if ( $config_data =~ /'dropout_keep_prob'\s*:\s*(0\.[0-9]*)/ ){
@@ -76,6 +75,7 @@ if ( $config_data =~ /'dropout_keep_prob'\s*:\s*(0\.[0-9]*)/ ){
 }
 $nn_shape .= ' ' . ( ( $config_data =~ /'cell_type'\s*:\s*'([^']*)'/ )[0] // 'lstm' );
 $nn_shape .= ' +reuse'  if ( $config_data =~ /'reuse_embeddings'\s*:\s*True/ );
+$nn_shape .= ' +1/2s'  if ( $config_data =~ /'predict_halves'\s*:\s*True/ );
 $nn_shape .= ' +ints'  if ( $config_data =~ /'predict_ints'\s*:\s*True/ );
 $nn_shape .= ' +adgr'  if ( $config_data =~ /'optimizer_type'\s*:\s*'adagrad'/ );
 

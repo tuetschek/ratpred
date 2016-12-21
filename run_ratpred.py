@@ -45,9 +45,10 @@ def test(args):
     inputs, targets = read_data(args.test_data, rp.target_col, rp.delex_slots)
 
     log_info("Rating %d instances..." % len(inputs))
-    dist, std, acc = rp.evaluate(inputs, targets, args.write_outputs)
+    dist, std, acc, corr, pv = rp.evaluate(inputs, targets, args.write_outputs)
     log_info("Distance: %.3f (avg: %.3f, std: %.3f)" % (dist, dist / len(inputs), std))
     log_info("Accuracy: %.3f" % acc)
+    log_info("Pearson correlation: %.3f (p-value %.3f)" % (corr, pv))
 
 
 def main():

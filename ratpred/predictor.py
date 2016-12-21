@@ -15,6 +15,7 @@ import math
 import os.path
 
 import numpy as np
+import scipy.stats
 import tensorflow as tf
 
 from pytreex.core.util import file_stream
@@ -59,6 +60,7 @@ class RatingPredictor(TFModel):
         self.reuse_embeddings = cfg.get('reuse_embeddings', False)
         self.tanh_layers = cfg.get('tanh_layers', 0)
         self.predict_ints = cfg.get('predict_ints', False)
+        self.predict_halves = cfg.get('predict_halves', False)
         self.num_outputs = 1  # will be changed in training if predict_ints is True
 
     def save_to_file(self, model_fname):
@@ -146,7 +148,7 @@ class RatingPredictor(TFModel):
             if (self.valid_inputs and self.validation_freq and
                     iter_no > self.min_passes and iter_no % self.validation_freq == 0):
 
-                valid_dist, _, valid_acc = self.evaluate(self.valid_inputs, self.valid_y)
+                valid_dist, _, valid_acc, _, _ = self.evaluate(self.valid_inputs, self.valid_y)
                 log_info('Validation distance: %.3f (avg: %.3f), accuracy %.3f' %
                          (valid_dist, valid_dist / len(self.valid_inputs[0]), valid_acc))
 
@@ -172,8 +174,9 @@ class RatingPredictor(TFModel):
         # TODO possibly need to transpose the output here as well
         val = self.session.run(self.output, feed_dict=fd)
         if self.predict_ints:
-            # do the actual sigmoid + squeeze it into our range
-            return min(np.sum(sigmoid(val)) + self.outputs_range_lo, self.outputs_range_hi)
+            # do the actual sigmoid + squeeze it into our range (using ints or half-ints)
+            coeff = 0.5 if self.predict_halves else 1.0
+            return min(coeff * np.sum(sigmoid(val)) + self.outputs_range_lo, self.outputs_range_hi)
         else:
             return float(val)
 
@@ -226,10 +229,15 @@ class RatingPredictor(TFModel):
         self.input_shape = self.embs.get_embeddings_shape()
 
         if self.predict_ints:
+            # TODO assuming min./max. ratings are integer
             self.outputs_range_lo = int(round(min(self.y)))
             self.outputs_range_hi = int(round(max(self.y)))
             self.y = self._ints_to_binary(self.y)
+            # we actually want 1 output less than the range (all 0's = lo, all 1'= hi)
             self.num_outputs = self.outputs_range_hi - self.outputs_range_lo
+            if self.predict_halves:
+                # all 1/2 steps between hi and lo, i.e., 2*range - 1
+                self.num_outputs += self.num_outputs
         else:
             self.y = np.array([[y_] for y_ in self.y])  # make my output 1-D
             self.num_outputs = 1  # just one real-valued output
@@ -240,9 +248,11 @@ class RatingPredictor(TFModel):
         self.session.run(tf.global_variables_initializer())
 
     def _ints_to_binary(self, ints):
-        """Transform input int values into list of binaries (1's lower than the int, 0's higher)."""
-        ints = [[0 if val < i + 0.5 else 1
-                 for i in xrange(self.outputs_range_lo, self.outputs_range_hi)]
+        """Transform input int/half-int values into list of binaries (1's lower than
+        the (half-)int, 0's higher)."""
+        step = 0.5 if self.predict_halves else 1.0
+        ints = [[0 if val < i + (step/2.0) else 1
+                 for i in np.arange(self.outputs_range_lo, self.outputs_range_hi, step)]
                 for val in ints]
         return np.array(ints)
 
@@ -383,6 +393,7 @@ class RatingPredictor(TFModel):
 
     def evaluate(self, inputs, targets, output_file=None):
         """
+        Evaluate the predictor on the given inputs & targets; possibly also write to a file.
         """
         if isinstance(inputs, tuple):
             das, input_refs, input_hyps = inputs
@@ -391,12 +402,20 @@ class RatingPredictor(TFModel):
         dists = []
         correct = 0
         ratings = []
+        int_ratings = []
         for da, input_ref, input_hyp, target in zip(das, input_refs, input_hyps, targets):
             rating = self.rate([input_ref], [input_hyp])
             ratings.append(rating)
             dists.append(abs(rating - target))
-            if round(rating) == round(target):
-                correct += 1
+            if self.predict_halves:
+                int_ratings.append(round(rating * 2) / 2)
+                if round(rating * 2) == round(target * 2):
+                    correct += 1
+            else:
+                int_ratings.append(int(round(rating)))
+                if round(rating) == round(target):
+                    correct += 1
+        corr, pv = scipy.stats.pearsonr(targets, int_ratings)
         if output_file:
             write_outputs(output_file, inputs, targets, ratings)
-        return np.sum(dists), np.std(dists), float(correct) / len(input_refs)
+        return np.sum(dists), np.std(dists), float(correct) / len(input_refs), corr, pv
