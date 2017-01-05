@@ -97,7 +97,7 @@ foreach my $pattern (@patterns) {
         my $num    = $1;
         my $endpos = pos $line;
         $out .= substr( $line, length($out), $endpos - length($out) - length($num) );
-        $out .= sprintf( "%.4f", shift @$cumul );
+        $out .= sprintf( "%.3f", shift @$cumul );
     }
     print $out . "\n";
 }
