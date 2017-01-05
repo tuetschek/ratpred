@@ -38,7 +38,6 @@ def train(args):
 
 def test(args):
 
-    log_info("Loading model from %s..." % args.model_file)
     rp = RatingPredictor.load_from_file(args.model_file)
 
     log_info("Loading test data from %s..." % args.test_data)
