@@ -166,19 +166,26 @@ class RatingPredictor(TFModel):
 
     def rate(self, refs, hyps):
         """
+        Rate a pair of reference sentence + system output hypothesis.
+
+        @param refs: a reference sentence (as a 1-element array, batches not yet supported)
+        @param hyps: a system output hypothesis (as a 1-element array, batches not yet supported)
+        @return: the rating, as a floating point number
         """
         inputs_ref = np.array([self.embs.get_embeddings(sent) for sent in refs])
         inputs_hyp = np.array([self.embs.get_embeddings(sent) for sent in hyps])
         fd = {}
         self._add_inputs_to_feed_dict(inputs_ref, inputs_hyp, fd)
         # TODO possibly need to transpose the output here as well
+        # TODO the rest does not support batches even if the previous does !!!
         val = self.session.run(self.output, feed_dict=fd)
         if self.predict_ints:
             # do the actual sigmoid + squeeze it into our range (using ints or half-ints)
             coeff = 0.5 if self.predict_halves else 1.0
             return min(coeff * np.sum(sigmoid(val)) + self.outputs_range_lo, self.outputs_range_hi)
         else:
-            return float(val)
+            # just squeeze the output float value into our range
+            return max(float(self.outputs_range_lo), min(float(self.outputs_range_hi), float(val)))
 
     def _divide_inputs(self, inputs, trunc_size=None):
         size = trunc_size if trunc_size is not None else len(inputs)
@@ -225,13 +232,13 @@ class RatingPredictor(TFModel):
         self.X_ref = np.array([self.embs.get_embeddings(sent) for sent in self.train_refs])
         self.X_hyp = np.array([self.embs.get_embeddings(sent) for sent in self.train_hyps])
 
-        # initialize I/O shapes
+        # initialize I/O shapes and boundaries
         self.input_shape = self.embs.get_embeddings_shape()
 
+        self.outputs_range_lo = int(round(min(self.y)))
+        self.outputs_range_hi = int(round(max(self.y)))
         if self.predict_ints:
             # TODO assuming min./max. ratings are integer
-            self.outputs_range_lo = int(round(min(self.y)))
-            self.outputs_range_hi = int(round(max(self.y)))
             self.y = self._ints_to_binary(self.y)
             # we actually want 1 output less than the range (all 0's = lo, all 1'= hi)
             self.num_outputs = self.outputs_range_hi - self.outputs_range_lo
