@@ -417,5 +417,5 @@ class RatingPredictor(TFModel):
                     correct += 1
         corr, pv = scipy.stats.pearsonr(targets, int_ratings)
         if output_file:
-            write_outputs(output_file, inputs, targets, ratings)
+            write_outputs(output_file, inputs, targets, ratings, int_ratings)
         return np.sum(dists), np.std(dists), float(correct) / len(input_refs), corr, pv
