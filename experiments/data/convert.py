@@ -10,7 +10,28 @@ from argparse import ArgumentParser
 
 from tgen.logf import log_info
 
+
+def get_data_parts(data, sizes):
+    """Split the data into parts, given the parts' proportional sizes.
+    @param data: the data to be split
+    @param sizes: parts' sizes ratios
+    @return a list of data parts
+    """
+    parts = []
+    total_parts = sum(sizes)
+    sizes = [int(round((part / float(total_parts)) * len(data))) for part in sizes]
+    sizes[0] += len(data) - sum(sizes)  # 1st part takes the rounding error
+    offset = 0
+    for size in sizes:
+        part = data.iloc[offset:offset + size, :]
+        offset += size
+        parts.append(part)
+    return parts
+
 def convert(args):
+    """Main function, does the conversion, taking parsed command-line arguments.
+    @param args: command-line arguments
+    """
 
     log_info("Loading %s..." % args.input_file)
     data = pd.read_csv(args.input_file)
@@ -38,19 +59,27 @@ def convert(args):
         data = data[data[crit_col] == crit_val]  # dev+test data have the criterion
         sizes = sizes[1:]  # training size does not matter (everything not fulfilling the criterion)
 
-    # split the data into parts
-    parts = []
-    total_parts = sum(sizes)
-    sizes = [int(round((part / float(total_parts)) * len(data))) for part in sizes]
-    sizes[0] += len(data) - sum(sizes)  # 1st part take the rounding error
-    offset = 0
-    for size in sizes:
-        part = data.iloc[offset:offset + size,:]
-        offset += size
-        parts.append(part)
+    if args.cv:  # for cross-validation, just pre-split the data to small parts (to be compiled later)
+        cv_sizes = sizes
+        sizes = [1] * sum(sizes)
+
+    parts = get_data_parts(data, sizes)
 
     if args.devtest_crit:
         parts = [train_part] + parts
+
+    if args.cv:  # for cross-validation, compile the data, repeating the parts with a shift
+        cv_parts = []
+        cv_labels = []
+        for offset in xrange(len(sizes)):
+            os.mkdir(os.path.join(args.output_dir, 'cv%02d' % offset))
+            cur_parts = parts[offset:] + parts[:offset]
+            for cv_size, cv_label in zip(cv_sizes, labels):
+                cv_parts.append(pd.concat(cur_parts[:cv_size]))
+                cur_parts = cur_parts[cv_size:]
+                cv_labels.append(os.path.join('cv%02d' % offset, cv_label))
+        labels = cv_labels
+        parts = cv_parts
 
     for label, part in zip(labels, parts):
         # write the output
@@ -73,6 +102,9 @@ if __name__ == '__main__':
                     help='Group human ratings and use medians')
     ap.add_argument('-c', '--concat_refs', action='store_true',
                     help='Join and concatenate all references?')
+    ap.add_argument('-v', '--cv', action='store_true',
+                    help='Create cross-validation files (as many parts as ' +
+                    'there are in the data split ratio)?')
     ap.add_argument('input_file', type=str, help='Path to the input file')
     ap.add_argument('output_dir', type=str,
                     help='Output directory (where train,devel,test TSV will be created)')
@@ -81,5 +113,3 @@ if __name__ == '__main__':
 
     args = ap.parse_args()
     convert(args)
-
-
