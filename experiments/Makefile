@@ -11,7 +11,7 @@ QP = --engine=grun
 ifdef LOCAL
   QP = --engine=console
 endif
-QSUBMIT = qsubmit --logdir '$(TRY_DIR)' --mem $(MEM) --cores $(CPUS) --jobname R.$(TRY_NUM).$(RUN_NAME) $(QP) $(QHOLD)# using OB's qsubmit script
+QSUBMIT = qsubmit --logdir '$(TRY_DIR)' --mem $(MEM) --cores $(CPUS) --jobname R.$(TRY_NUM)$(CV_NUM)$(SEED).$(RUN_NAME) $(QP) $(QHOLD)# using OB's qsubmit script
 TRAIN_PORTION=1.0
 ACTIVATE = echo -n # source your activate script instead
 
@@ -35,7 +35,7 @@ RUNS_DIR  := runs# main directory for experiment outputs
 TRY_NUM   := $(shell perl -e '$$m=0; for(<$(RUNS_DIR)/*>){/\/(\d+)_/ and $$1 > $$m and $$m=$$1;} printf "%03d", $$m+1;')# experiment number
 RUN_NAME  := experiment# default name, to be overridden by targets
 DATE      := $(shell date +%Y-%m-%d_%H-%M-%S)
-TRY_DIR    = $(RUNS_DIR)/$(TRY_NUM)_$(DATE)_$(RUN_NAME)# experiment output directory
+TRY_DIR    = $(RUNS_DIR)/$(TRY_NUM)_$(DATE)_$(RUN_NAME)# experiment main output directory (disregarding random seeds and CV)
 TRAINING_SET := toy
 
 ifdef D # Shortcut D -> DESC
@@ -46,12 +46,19 @@ endif
 
 CONFIG = config/config.py
 
-TRAIN_DATA = data/$(TRAINING_SET)/train.tsv
-TEST_DATA = data/$(TRAINING_SET)/devel.tsv
+TRAIN_DATA = data/$(TRAINING_SET)/$(CV_NUM)/train.tsv
+TEST_DATA = data/$(TRAINING_SET)/$(CV_NUM)/devel.tsv
 
 ifdef EVAL_TEST
-  TEST_DATA = data/$(TRAINING_SET)/test.tsv
-  VALID_DATA = data/$(TRAINING_SET)/devel.tsv
+  TEST_DATA = data/$(TRAINING_SET)/$(CV_NUM)/test.tsv
+  VALID_DATA = data/$(TRAINING_SET)/$(CV_NUM)/devel.tsv
+endif
+
+# if the training data set has "cv" in its name, default to looking for CV runs
+ifneq (,$(findstring cv,$(TRAINING_SET)))
+  CV_NUMS=($(shell find data/$(TRAINING_SET)/* -type d -printf " %f "))
+else
+  CV_NUMS=("")
 endif
 
 # Help text
@@ -126,6 +133,7 @@ printgit:
 
 prepare_dir:
 	# create the experiment directory, print description and git version
+	echo "PREPARE DIR" $(TRY_DIR) $(CV_NUM)
 	mkdir -p $(TRY_DIR)
 	CONFIG=$(CONFIG) ; \
 	[[ -n "$(DEBUG)" || -n "$(DEBUG_TEST)" ]] && DEBUG_SETTING=-d ; \
@@ -142,20 +150,23 @@ prepare_dir:
 cv_run: RUN_NAME := cv_run
 cv_run: prepare_dir
 cv_run:
-	if [[ -n "$(RANDS)" ]]; then \
-		SEEDS=(s0 s1 s2 s3 s4); \
-	else \
-		SEEDS=(""); \
-	fi; \
-	for SEED in "$${SEEDS[@]}"; do \
-		TRAIN_RUN=train ; \
-		TEST_RUN=test_cv ; \
-		make $$TRAIN_RUN TRY_DIR=$(TRY_DIR)/$$SEED SEED=$$SEED TRY_NUM=$(TRY_NUM) 2>&1 | tee -a $(TRY_DIR)/cv.log.txt ; \
-		JOB_NUM=`cat $(TRY_DIR)/cv.log.txt | grep '^\(Your job\|Submitted batch\|Job_ID\)' | tail -n 1 | sed 's/^\(Your job\|Submitted batch job\|Job_ID:\) \([0-9]\+\).*/\2/;' ` ; \
-		if [ -n "$$JOB_NUM" ]; then \
-		    QHOLD="--hold $$JOB_NUM"; \
-		fi ; \
-		make $$TEST_RUN TRY_DIR=$(TRY_DIR)/$$SEED TRY_NUM=$(TRY_NUM) QP="$(QP)" QHOLD="$$QHOLD"; \
+	CV_NUMS=$(CV_NUMS); \
+	for CV_NUM in "$${CV_NUMS[@]}"; do \
+		if [[ -n "$(RANDS)" ]]; then \
+			SEEDS=(s0 s1 s2 s3 s4); \
+		else \
+			SEEDS=(""); \
+		fi; \
+		for SEED in "$${SEEDS[@]}"; do \
+			TRAIN_RUN=train ; \
+			TEST_RUN=test_cv ; \
+			make $$TRAIN_RUN TRY_DIR=$(TRY_DIR)/$$CV_NUM$$SEED SEED=$$SEED TRY_NUM=$(TRY_NUM) CV_NUM=$$CV_NUM 2>&1 | tee -a $(TRY_DIR)/cv.log.txt ; \
+			JOB_NUM=`cat $(TRY_DIR)/cv.log.txt | grep '^\(Your job\|Submitted batch\|Job_ID\)' | tail -n 1 | sed 's/^\(Your job\|Submitted batch job\|Job_ID:\) \([0-9]\+\).*/\2/;' ` ; \
+			if [ -n "$$JOB_NUM" ]; then \
+			    QHOLD="--hold $$JOB_NUM"; \
+			fi ; \
+			make $$TEST_RUN TRY_DIR=$(TRY_DIR)/$$CV_NUM$$SEED SEED=$$SEED TRY_NUM=$(TRY_NUM) CV_NUM=$$CV_NUM QP="$(QP)" QHOLD="$$QHOLD"; \
+		done; \
 	done
 
 cv_score-%:
