@@ -57,6 +57,7 @@ class RatingPredictor(TFModel):
         self.delex_slots = cfg.get('delex_slots', set())
         if self.delex_slots:
             self.delex_slots = set(self.delex_slots.split(','))
+        self.delex_slot_names = cfg.get('delex_slot_names', False)
         self.reuse_embeddings = cfg.get('reuse_embeddings', False)
         self.tanh_layers = cfg.get('tanh_layers', 0)
         self.predict_ints = cfg.get('predict_ints', False)
@@ -83,10 +84,10 @@ class RatingPredictor(TFModel):
         if self.embs:
             data['dict_size'] = self.dict_size
             data['input_shape'] = self.input_shape
+            data['outputs_range_lo'] = self.outputs_range_lo
+            data['outputs_range_hi'] = self.outputs_range_hi
             if self.predict_ints:
                 data['num_outputs'] = self.num_outputs
-                data['outputs_range_lo'] = self.outputs_range_lo
-                data['outputs_range_hi'] = self.outputs_range_hi
         return data
 
     def _save_checkpoint(self):
@@ -126,11 +127,12 @@ class RatingPredictor(TFModel):
     def train(self, train_data_file, valid_data_file=None, data_portion=1.0):
         """Run training on the given training data.
         """
-        inputs, targets = read_data(train_data_file, self.target_col, self.delex_slots)
+        inputs, targets = read_data(train_data_file, self.target_col,
+                                    self.delex_slots, self.delex_slot_names)
         valid_inputs, valid_targets = None, None
         if valid_data_file:
-            valid_inputs, valid_targets = read_data(valid_data_file,
-                                                    self.target_col, self.delex_slots)
+            valid_inputs, valid_targets = read_data(valid_data_file, self.target_col,
+                                                    self.delex_slots, self.delex_slot_names)
         log_info('Training rating predictor...')
 
         # initialize training

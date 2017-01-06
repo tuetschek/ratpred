@@ -13,17 +13,17 @@ from tgen.futil import tokenize
 from tgen.delex import delex_sent
 
 
-def read_data(filename, target_col, delex_slots):
+def read_data(filename, target_col, delex_slots, delex_slot_names=False):
     data = pd.read_csv(filename, sep=b"\t", encoding='UTF-8')
 
     das = [DA.parse_cambridge_da(da) for da in data['mr']]
     texts_ref = [[(tok, None)
                   for tok in delex_sent(da, tokenize(sent.lower()).split(' '),
-                                        delex_slots, True)[0]]
+                                        delex_slots, not delex_slot_names, delex_slot_names)[0]]
                  for da, sent in zip(das, data['orig_ref'])]
     texts_hyp = [[(tok, None)
                   for tok in delex_sent(da, tokenize(sent.lower()).split(' '),
-                                        delex_slots, True)[0]]
+                                        delex_slots, not delex_slot_names, delex_slot_names)[0]]
                  for da, sent in zip(das, data['system_ref'])]
 
     inputs = [(da, ref, hyp) for da, ref, hyp in zip(das, texts_ref, texts_hyp)]

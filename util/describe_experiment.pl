@@ -52,19 +52,15 @@ if ($config_data =~ /'validation_size'\s*:\s*([0-9]+)\s*,/ and $1 != 0 ){
     $iters .= '@' . ( ( $config_data =~ /'validation_freq'\s*:\s*([0-9]+)\s*,/ )[0] // 10);
     $iters .= ' I' . ( ( $config_data =~ /'improve_interval'\s*:\s*([0-9]+)\s*,/ )[0] // 10);
     $iters .= '@' . ( ( $config_data =~ /'top_k'\s*:\s*([0-9]+)\s*,/ )[0] // 5);
-    if ( ( $config_data =~ /'bleu_validation_weight'\s*:\s*([01]\.?[0-9]*)/ ) ){
-        my $val = $1;
-        if ($val > 0.0){
-            $iters .= ' B' . sprintf( "%.2g", $val );
-        }
-    }
 }
 
 # data style
 if ($portion < 1.0){
     $training_set .= '/' . $portion;
 }
+$training_set .= ' -slotn' if ( $config_data =~ /'delex_slot_names'\s*:\s*True/ );
 $training_data = $training_set . ' -> ' . ( ( $config_data =~ /'target_col'\s*:\s*'([^']*)'/ )[0] // 'quality' );
+
 
 # gadgets
 $nn_shape .= ' E' . ( ( $config_data =~ /'emb_size'\s*:\s*([0-9]*)/ )[0] // 50 );
