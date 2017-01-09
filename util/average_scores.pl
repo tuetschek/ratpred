@@ -12,7 +12,7 @@ use autodie;
 use File::Basename;
 use File::stat;
 
-my @patterns = ( 'Distance' );
+my @patterns = ( 'Distance', 'Accuracy', 'Pearson' );
 my %data;
 my %lines;
 
@@ -92,13 +92,15 @@ foreach my $pattern (@patterns) {
     # print out the result
     my $line = $lines{$pattern};
     my $out  = "";
+    my $endpos = pos $line;
 
     while ( $line =~ m/([0-9]+\.[0-9]+)/g ) {
         my $num    = $1;
-        my $endpos = pos $line;
+        $endpos = pos $line;
         $out .= substr( $line, length($out), $endpos - length($out) - length($num) );
         $out .= sprintf( "%.3f", shift @$cumul );
     }
+    $out .= substr( $line, $endpos );
     print $out . "\n";
 }
 
