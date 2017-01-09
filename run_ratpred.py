@@ -41,13 +41,13 @@ def test(args):
     rp = RatingPredictor.load_from_file(args.model_file)
 
     log_info("Loading test data from %s..." % args.test_data)
-    inputs, targets = read_data(args.test_data, rp.target_col, rp.delex_slots)
+    inputs, targets = read_data(args.test_data, rp.target_col, rp.delex_slots, rp.delex_slot_names)
 
     log_info("Rating %d instances..." % len(inputs))
     results = rp.evaluate(inputs, targets, args.write_outputs)
     log_info("Distance: %.3f (avg: %.3f, std: %.3f)" % (results['dist_total'],
                                                         results['dist_avg'],
-                                                        results['dist_std']))
+                                                        results['dist_stddev']))
     log_info("Accuracy: %.3f" % results['accuracy'])
     log_info("Pearson correlation: %.3f (p-value %.3f)" %
              (results['pearson'], results['pearson_pv']))
