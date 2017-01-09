@@ -58,6 +58,9 @@ def convert(args):
         train_part = data[data[crit_col] != crit_val]  # training data is everything else
         data = data[data[crit_col] == crit_val]  # dev+test data have the criterion
         sizes = sizes[1:]  # training size does not matter (everything not fulfilling the criterion)
+        if args.add_valid:  # add a few validation examples into training data
+            train_part = pd.concat((train_part, data[0:args.add_valid]))
+            data = data[args.add_valid:]
 
     if args.cv:  # for cross-validation, just pre-split the data to small parts (to be compiled later)
         cv_sizes = sizes
@@ -92,6 +95,8 @@ if __name__ == '__main__':
     ap = ArgumentParser()
     ap.add_argument('-d', '--devtest-crit', type=str, default=None,
                     help='A criterion (column=val) for selecting devel/test examples')
+    ap.add_argument('-a', '--add-valid', type=int, default=0,
+                    help='Add some validation data to train (use with --devtest-crit)')
     ap.add_argument('-r', '--ratio', type=str, default='3:1:1',
                     help='Train-devel-test split ratio')
     ap.add_argument('-l', '--labels', type=str, default='train:devel:test',
