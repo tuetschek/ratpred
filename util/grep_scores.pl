@@ -46,8 +46,14 @@ while ( my $line = <$fh> ) {
     }
     if ( $line =~ /(Accuracy:)/i ) {
         $line =~ s/.*Accuracy://i;
-        $pr .= rg( 0, 1 , $line ) . "A $line\e[0m";
+        $pr .= rg( 0, 1 , $line ) . "A $line\e[0m  ";
     }
+    if ( $line =~ /(Pearson|Spearman) correlation:/i ) {
+        my $letter = substr($1, 0, 1);
+        my ($corr, $pv ) = ($line =~ /([0-9.]+) \(p-value ([0-9.]+)\)/);
+        $pr .= rg( 0, 1, $corr ) . "$letter $corr\e[0m  ";
+    }
+
 }
 
 close($fh);
