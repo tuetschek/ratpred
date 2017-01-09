@@ -12,7 +12,7 @@ use autodie;
 use File::Basename;
 use File::stat;
 
-my @patterns = ( 'Distance', 'Accuracy', 'Pearson' );
+my @patterns = ( 'Distance', 'Accuracy', 'Pearson', 'Spearman' );
 my %data;
 my %lines;
 

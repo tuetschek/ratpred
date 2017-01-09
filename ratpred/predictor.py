@@ -150,12 +150,11 @@ class RatingPredictor(TFModel):
             if (self.valid_inputs and self.validation_freq and
                     iter_no > self.min_passes and iter_no % self.validation_freq == 0):
 
-                valid_dist, _, valid_acc, _, _ = self.evaluate(self.valid_inputs, self.valid_y)
+                results = self.evaluate(self.valid_inputs, self.valid_y)
                 log_info('Validation distance: %.3f (avg: %.3f), accuracy %.3f' %
-                         (valid_dist, valid_dist / len(self.valid_inputs[0]), valid_acc))
+                         (results['dist_total'], results['dist_avg'], results['accuracy']))
 
-                # TODO use validation data here
-                comb_cost = len(self.valid_inputs) * valid_acc + 100 * valid_dist + pass_cost
+                comb_cost = len(self.valid_inputs) * results['accuracy'] + 100 * results['dist_total'] + pass_cost
                 log_info('Combined validation cost: %.3f' % comb_cost)
 
                 # if we have the best model so far, save it as a checkpoint (overwrite previous)
@@ -424,7 +423,15 @@ class RatingPredictor(TFModel):
                 int_ratings.append(int(round(rating)))
                 if round(rating) == round(target):
                     correct += 1
-        corr, pv = scipy.stats.pearsonr(targets, int_ratings)
+        pearson, pearson_pv = scipy.stats.pearsonr(targets, int_ratings)
+        spearman, spearman_pv = scipy.stats.spearmanr(targets, int_ratings)
         if output_file:
             write_outputs(output_file, inputs, targets, ratings, int_ratings)
-        return np.sum(dists), np.std(dists), float(correct) / len(input_refs), corr, pv
+        return {'dist_total' : np.sum(dists),
+                'dist_avg': np.mean(dists),
+                'dist_stddev': np.std(dists),
+                'accuracy': float(correct) / len(input_refs),
+                'pearson': pearson,
+                'pearson_pv': pearson_pv,
+                'spearman': spearman,
+                'spearman_pv': spearman_pv}
