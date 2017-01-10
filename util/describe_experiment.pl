@@ -78,7 +78,9 @@ $nn_shape .= ' +adgr'  if ( $config_data =~ /'optimizer_type'\s*:\s*'adagrad'/ )
 
 if ($cv) {
     my @cv_runs = split /\s+/, $cv;
-    $run_setting .= ' ' . scalar(@cv_runs) . 'CV';
+    if (@cv_runs > 1){
+        $run_setting .= ' ' . scalar(@cv_runs) . 'CV';
+    }
 }
 if ($debug) {
     $run_setting .= ' DEBUG';
