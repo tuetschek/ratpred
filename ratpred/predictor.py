@@ -26,6 +26,7 @@ from tgen.embeddings import TokenEmbeddingSeq2SeqExtract
 from tgen.tf_ml import TFModel
 
 from ratpred.futil import read_data, write_outputs
+from ratpred.embeddings import Word2VecEmbeddingExtract
 
 def sigmoid(nums):
     return 1 / (1 + np.exp(-nums))
@@ -40,7 +41,10 @@ class RatingPredictor(TFModel):
         self.cfg = cfg
         self.emb_size = cfg.get('emb_size', 50)
         cfg['reverse'] = True  # embeddings should always be reversed
-        self.embs = TokenEmbeddingSeq2SeqExtract(cfg)
+        if 'word2vec_model' in cfg:
+            self.embs = Word2VecEmbeddingExtract(cfg)
+        else:
+            self.embs = TokenEmbeddingSeq2SeqExtract(cfg)
 
         self.passes = cfg.get('passes', 200)
         self.min_passes = cfg.get('min_passes', 0)
@@ -307,6 +311,8 @@ class RatingPredictor(TFModel):
         self.saver = tf.train.Saver(tf.global_variables(), write_version=tf.train.SaverDef.V2)
 
     def _rnn(self, name, enc_inputs_ref, enc_inputs_hyp):
+        # TODO fix using word2vec
+        # -- tady nejaky if s embedding_lookup; na zacatku musim mit variable, a muzu si rict, ze bude trainable=False
         with tf.variable_scope('enc_ref') as scope:
             enc_cell_ref = tf.nn.rnn_cell.EmbeddingWrapper(self.cell, self.dict_size, self.emb_size)
             enc_outs_ref, enc_state_ref = tf.nn.rnn(enc_cell_ref, enc_inputs_ref, dtype=tf.float32)

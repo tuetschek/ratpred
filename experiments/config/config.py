@@ -22,6 +22,7 @@ config = {
           #'delex_slots': 'count,addr,area,food,price,phone,near,pricerange,postcode,address,eattype,type,price_range,good_for_meal,name',
           'delex_slot_names': False,
           'reuse_embeddings': False,
+          #'word2vec_model': 'data/word2vec/GoogleNews-vectors-negative-300_100k.bin',
           'tanh_layers': 0,
           'predict_ints': False,
           'predict_halves': True,
