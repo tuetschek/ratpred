@@ -26,4 +26,5 @@ config = {
           'tanh_layers': 0,
           'predict_ints': False,
           'predict_halves': True,
+          'predict_coarse': None, #'train',
         }

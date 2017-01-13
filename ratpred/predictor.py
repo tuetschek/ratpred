@@ -28,6 +28,7 @@ from tgen.tf_ml import TFModel
 from ratpred.futil import read_data, write_outputs
 from ratpred.embeddings import Word2VecEmbeddingExtract
 
+
 def sigmoid(nums):
     return 1 / (1 + np.exp(-nums))
 
@@ -66,6 +67,7 @@ class RatingPredictor(TFModel):
         self.tanh_layers = cfg.get('tanh_layers', 0)
         self.predict_ints = cfg.get('predict_ints', False)
         self.predict_halves = cfg.get('predict_halves', False)
+        self.predict_coarse = cfg.get('predict_coarse', None)
         self.num_outputs = 1  # will be changed in training if predict_ints is True
 
     def save_to_file(self, model_fname):
@@ -175,7 +177,7 @@ class RatingPredictor(TFModel):
 
         @param refs: a reference sentence (as a 1-element array, batches not yet supported)
         @param hyps: a system output hypothesis (as a 1-element array, batches not yet supported)
-        @return: the rating, as a floating point number
+        @return: the rating, as a floating point number (not rounded to prediction boundaries)
         """
         inputs_ref = np.array([self.embs.get_embeddings(sent) for sent in refs])
         inputs_hyp = np.array([self.embs.get_embeddings(sent) for sent in hyps])
@@ -185,8 +187,8 @@ class RatingPredictor(TFModel):
         # TODO the rest does not support batches even if the previous does !!!
         val = self.session.run(self.output, feed_dict=fd)
         if self.predict_ints:
-            # do the actual sigmoid + squeeze it into our range (using ints or half-ints)
-            coeff = 0.5 if self.predict_halves else 1.0
+            # do the actual sigmoid + squeeze it into our range (using defined coarseness)
+            coeff = self._rounding_step('train')
             return min(coeff * np.sum(sigmoid(val)) + self.outputs_range_lo, self.outputs_range_hi)
         else:
             # just squeeze the output float value into our range
@@ -243,15 +245,18 @@ class RatingPredictor(TFModel):
         self.outputs_range_lo = int(round(min(self.y)))
         self.outputs_range_hi = int(round(max(self.y)))
         if self.predict_ints:
-            # TODO assuming min./max. ratings are integer
-            self.y = self._ints_to_binary(self.y)
-            # we actually want 1 output less than the range (all 0's = lo, all 1'= hi)
-            self.num_outputs = self.outputs_range_hi - self.outputs_range_lo
-            if self.predict_halves:
-                # all 1/2 steps between hi and lo, i.e., 2*range - 1
-                self.num_outputs += self.num_outputs
+            self.y = self._ratings_to_binary(self.y)
+            if self.predict_coarse == 'train':
+                self.num_outputs = 3
+            else:
+                # we actually want 1 output less than the range (all 0's = lo, all 1'= hi)
+                self.num_outputs = self.outputs_range_hi - self.outputs_range_lo
+                if self.predict_halves:
+                    # all 1/2 steps between hi and lo, i.e., 2*(range-1)
+                    self.num_outputs *= 2
         else:
-            self.y = np.array([[y_] for y_ in self.y])  # make my output 1-D
+            # make target output 1-D and round it to desired coarseness
+            self.y = np.array([[self._round_rating(y_, mode='train')] for y_ in self.y])
             self.num_outputs = 1  # just one real-valued output
 
         # initialize NN classifier
@@ -259,11 +264,22 @@ class RatingPredictor(TFModel):
         # initialize the NN variables
         self.session.run(tf.global_variables_initializer())
 
-    def _ints_to_binary(self, ints):
+    def _rounding_step(self, mode='test'):
+        if self.predict_coarse == 'train' or self.predict_coarse is not None and mode == 'test':
+            return (self.outputs_range_hi - self.outputs_range_lo) / 2.0
+        elif self.predict_halves:
+            return 0.5
+        return 1.0
+
+    def _round_rating(self, rating, mode='test'):
+        step = self._rounding_step(mode)
+        return self.outputs_range_lo + round((rating - self.outputs_range_lo) / step) * step
+
+    def _ratings_to_binary(self, ints):
         """Transform input int/half-int values into list of binaries (1's lower than
         the (half-)int, 0's higher)."""
-        step = 0.5 if self.predict_halves else 1.0
-        ints = [[0 if val < i + (step/2.0) else 1
+        step = self._rounding_step('train')
+        ints = [[0 if val < i + (step / 2.0) else 1
                  for i in np.arange(self.outputs_range_lo, self.outputs_range_hi, step)]
                 for val in ints]
         return np.array(ints)
@@ -405,7 +421,7 @@ class RatingPredictor(TFModel):
     def _print_pass_stats(self, pass_no, time, cost):
         log_info('PASS %03d: duration %s, cost %f' % (pass_no, str(time), cost))
 
-    def evaluate(self, inputs, targets, output_file=None):
+    def evaluate(self, inputs, raw_targets, output_file=None):
         """
         Evaluate the predictor on the given inputs & targets; possibly also write to a file.
         """
@@ -415,25 +431,24 @@ class RatingPredictor(TFModel):
             das, input_refs, input_hyps = self._divide_inputs(inputs)
         dists = []
         correct = 0
+        raw_ratings = []
         ratings = []
-        int_ratings = []
-        for da, input_ref, input_hyp, target in zip(das, input_refs, input_hyps, targets):
+        targets = []
+        for da, input_ref, input_hyp, target in zip(das, input_refs, input_hyps, raw_targets):
             rating = self.rate([input_ref], [input_hyp])
+            raw_ratings.append(rating)
+            dists.append(abs(rating - target))  # calculate distance on raw ratings & targets
+            rating = self._round_rating(rating)  # calculate accuracy & correlation on rounded
+            target = self._round_rating(target)
             ratings.append(rating)
-            dists.append(abs(rating - target))
-            if self.predict_halves:
-                int_ratings.append(round(rating * 2) / 2)
-                if round(rating * 2) == round(target * 2):
-                    correct += 1
-            else:
-                int_ratings.append(int(round(rating)))
-                if round(rating) == round(target):
-                    correct += 1
-        pearson, pearson_pv = scipy.stats.pearsonr(targets, int_ratings)
-        spearman, spearman_pv = scipy.stats.spearmanr(targets, int_ratings)
+            targets.append(target)
+            if rating == target:
+                correct += 1
+        pearson, pearson_pv = scipy.stats.pearsonr(targets, ratings)
+        spearman, spearman_pv = scipy.stats.spearmanr(targets, ratings)
         if output_file:
-            write_outputs(output_file, inputs, targets, ratings, int_ratings)
-        return {'dist_total' : np.sum(dists),
+            write_outputs(output_file, inputs, raw_targets, targets, raw_ratings, ratings)
+        return {'dist_total': np.sum(dists),
                 'dist_avg': np.mean(dists),
                 'dist_stddev': np.std(dists),
                 'accuracy': float(correct) / len(input_refs),

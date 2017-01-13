@@ -32,7 +32,7 @@ def read_data(filename, target_col, delex_slots, delex_slot_names=False):
     return inputs, targets
 
 
-def write_outputs(filename, inputs, targets, outputs, int_outputs):
+def write_outputs(filename, inputs, raw_targets, targets, raw_outputs, outputs):
     das = [da for da, _, _ in inputs]
     input_refs = [" ".join([tok for tok, _ in input_ref]) for _, input_ref, _ in inputs]
     input_hyps = [" ".join([tok for tok, _ in input_hyp]) for _, _, input_hyp in inputs]
@@ -40,7 +40,8 @@ def write_outputs(filename, inputs, targets, outputs, int_outputs):
     df = pd.DataFrame({'mr': das,
                        'orig_ref': input_refs,
                        'system_output': input_hyps,
+                       'human_rating_raw': raw_targets,
                        'human_rating': targets,
-                       'system_rating': outputs,
-                       'system_rating_int': int_outputs})
+                       'system_rating_raw': raw_outputs,
+                       'system_rating': outputs})
     df.to_csv(filename, sep=b"\t", index=False)
