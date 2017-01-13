@@ -27,4 +27,5 @@ config = {
           'predict_ints': False,
           'predict_halves': True,
           'predict_coarse': None, #'train',
+          'cell_type': 'lstm',
         }

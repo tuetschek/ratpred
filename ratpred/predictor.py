@@ -41,6 +41,7 @@ class RatingPredictor(TFModel):
                                               cfg.get('scope_suffix', ''))
         self.cfg = cfg
         self.emb_size = cfg.get('emb_size', 50)
+        self.cell_type = cfg.get('cell_type', 'lstm')
         cfg['reverse'] = True  # embeddings should always be reversed
         if 'word2vec_model' in cfg:
             self.embs = Word2VecEmbeddingExtract(cfg)
@@ -300,7 +301,14 @@ class RatingPredictor(TFModel):
                                for i in xrange(self.input_shape[0])]
             self.inputs_hyp = [tf.placeholder(tf.int32, [None], name=('enc_inp_hyp-%d' % i))
                                for i in xrange(self.input_shape[0])]
-            self.cell = tf.nn.rnn_cell.BasicLSTMCell(self.emb_size)
+
+            if self.cell_type.startswith('gru'):
+                self.cell = tf.nn.rnn_cell.GRUCell(self.emb_size)
+            else:
+                self.cell = tf.nn.rnn_cell.BasicLSTMCell(self.emb_size)
+            if self.cell_type.endswith('/2'):
+                self.cell = tf.nn.rnn_cell.MultiRNNCell([self.cell] * 2)
+
             self.output = self._rnn('rnn', self.inputs_ref, self.inputs_hyp)
 
         if self.predict_ints:
@@ -342,27 +350,28 @@ class RatingPredictor(TFModel):
                 enc_cell_hyp = tf.nn.rnn_cell.EmbeddingWrapper(self.cell, self.dict_size, self.emb_size)
                 enc_outs_hyp, enc_state_hyp = tf.nn.rnn(enc_cell_hyp, enc_inputs_hyp, dtype=tf.float32)
 
-        # LSTM state contains the output
-        last_outs_and_states = tf.concat(1, [enc_state_ref.c, enc_state_ref.h,
-                                             enc_state_hyp.c, enc_state_hyp.h])
+        # concatenate last LSTM states & outputs (works for multilayer LSTMs&GRUs)
+        last_outs_and_states = tf.concat(1, self._flatten_enc_state(enc_state_ref) +
+                                         self._flatten_enc_state(enc_state_hyp))
+        state_size = int(last_outs_and_states.get_shape()[1])
         hidden = last_outs_and_states
 
         if self.tanh_layers > 0:
             with tf.variable_scope('hidden'):
                 for layer_no in xrange(self.tanh_layers):
                     h_w = tf.get_variable(name + '-w' + str(layer_no + 1),
-                                          ((self.cell.state_size.c + self.cell.state_size.h) * 2,
-                                           (self.cell.state_size.c + self.cell.state_size.h) * 2),
+                                          (state_size, state_size),
                                           initializer=tf.random_normal_initializer(stddev=0.1))
                     h_b = tf.get_variable(name + '-b' + str(layer_no + 1),
-                                          ((self.cell.state_size.c + self.cell.state_size.h) * 2,),
+                                          (state_size,),
                                           initializer=tf.constant_initializer())
                     hidden = tf.tanh(tf.matmul(hidden, h_w) + h_b)
 
         with tf.variable_scope('classif'):
-            w = tf.get_variable(name + '-w', ((self.cell.state_size.c + self.cell.state_size.h) * 2, 1),
+            w = tf.get_variable(name + '-w', (state_size, self.num_outputs),
                                 initializer=tf.random_normal_initializer(stddev=0.1))
-            b = tf.get_variable(name + '-b', (self.num_outputs,), initializer=tf.constant_initializer())
+            b = tf.get_variable(name + '-b', (self.num_outputs,),
+                                initializer=tf.constant_initializer())
 
         return tf.matmul(hidden, w) + b
 
@@ -370,6 +379,14 @@ class RatingPredictor(TFModel):
         """Create batches from the input; use as iterator."""
         for i in xrange(0, len(self.train_order), self.batch_size):
             yield self.train_order[i: i + self.batch_size]
+
+    def _flatten_enc_state(self, enc_state):
+        """Flatten up to two dimensions of tuples, return 1-D array."""
+        if isinstance(enc_state, tuple):
+            if isinstance(enc_state[0], tuple):
+                return [x for y in enc_state for x in y]
+            return [x for x in enc_state]
+        return [enc_state]
 
     def _add_inputs_to_feed_dict(self, inputs_ref, inputs_hyp, fd):
 
