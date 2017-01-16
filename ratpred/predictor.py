@@ -22,7 +22,7 @@ from pytreex.core.util import file_stream
 
 from tgen.logf import log_info, log_debug
 from tgen.rnd import rnd
-from tgen.embeddings import TokenEmbeddingSeq2SeqExtract
+from tgen.embeddings import TokenEmbeddingSeq2SeqExtract, DAEmbeddingSeq2SeqExtract
 from tgen.tf_ml import TFModel
 
 from ratpred.futil import read_data, write_outputs
@@ -47,6 +47,10 @@ class RatingPredictor(TFModel):
             self.embs = Word2VecEmbeddingExtract(cfg)
         else:
             self.embs = TokenEmbeddingSeq2SeqExtract(cfg)
+
+        self.da_enc = cfg.get('da_enc', False)
+        if self.da_enc:
+            self.da_embs = DAEmbeddingSeq2SeqExtract(cfg)
 
         self.passes = cfg.get('passes', 200)
         self.min_passes = cfg.get('min_passes', 0)
@@ -95,6 +99,9 @@ class RatingPredictor(TFModel):
             data['outputs_range_hi'] = self.outputs_range_hi
             if self.predict_ints:
                 data['num_outputs'] = self.num_outputs
+        if self.da_embs:
+            data['da_embs'] = self.da_embs
+            data['da_dict_size'] = self.da_dict_size
         return data
 
     def _save_checkpoint(self):
@@ -172,7 +179,7 @@ class RatingPredictor(TFModel):
         # restore last checkpoint (best performance on devel data)
         self.restore_checkpoint()
 
-    def rate(self, refs, hyps):
+    def rate(self, refs, hyps, das=None):
         """
         Rate a pair of reference sentence + system output hypothesis.
 
@@ -182,8 +189,10 @@ class RatingPredictor(TFModel):
         """
         inputs_ref = np.array([self.embs.get_embeddings(sent) for sent in refs])
         inputs_hyp = np.array([self.embs.get_embeddings(sent) for sent in hyps])
+        if das:
+            inputs_da = np.array([self.da_embs.get_embeddings(da) for da in das])
         fd = {}
-        self._add_inputs_to_feed_dict(inputs_ref, inputs_hyp, fd)
+        self._add_inputs_to_feed_dict(fd, inputs_ref, inputs_hyp, inputs_da)
         # TODO possibly need to transpose the output here as well
         # TODO the rest does not support batches even if the previous does !!!
         val = self.session.run(self.output, feed_dict=fd)
@@ -235,13 +244,19 @@ class RatingPredictor(TFModel):
         # initialize input embeddings
         self.dict_size = self.embs.init_dict(self.train_refs)
         self.dict_size = self.embs.init_dict(self.train_hyps, dict_ord=self.dict_size)
+        if self.da_enc:
+            self.da_dict_size = self.da_embs.init_dict(self.train_das)
 
         # convert training data to indexes
         self.X_ref = np.array([self.embs.get_embeddings(sent) for sent in self.train_refs])
         self.X_hyp = np.array([self.embs.get_embeddings(sent) for sent in self.train_hyps])
+        if self.da_enc:
+            self.X_da = np.array([self.da_embs.get_embeddings(da) for da in self.train_das])
 
         # initialize I/O shapes and boundaries
         self.input_shape = self.embs.get_embeddings_shape()
+        if self.da_enc:
+            self.da_input_shape = self.da_embs.get_embeddings_shape()
 
         self.outputs_range_lo = int(round(min(self.y)))
         self.outputs_range_hi = int(round(max(self.y)))
@@ -301,6 +316,10 @@ class RatingPredictor(TFModel):
                                for i in xrange(self.input_shape[0])]
             self.inputs_hyp = [tf.placeholder(tf.int32, [None], name=('enc_inp_hyp-%d' % i))
                                for i in xrange(self.input_shape[0])]
+            if self.da_enc:
+                self.initial_state_da = tf.placeholder(tf.float32, [None, self.emb_size])
+                self.inputs_da = [tf.placeholder(tf.int32, [None], name=('enc_inp_da-%d' % i))
+                                  for i in xrange(self.da_input_shape[0])]
 
             if self.cell_type.startswith('gru'):
                 self.cell = tf.nn.rnn_cell.GRUCell(self.emb_size)
@@ -309,7 +328,8 @@ class RatingPredictor(TFModel):
             if self.cell_type.endswith('/2'):
                 self.cell = tf.nn.rnn_cell.MultiRNNCell([self.cell] * 2)
 
-            self.output = self._rnn('rnn', self.inputs_ref, self.inputs_hyp)
+            self.output = self._rnn('rnn', self.inputs_ref, self.inputs_hyp,
+                                    self.inputs_da if self.da_enc else None)
 
         if self.predict_ints:
             # sigmoid cost -- predict a bunch of 1's and 0's (not just one 1)
@@ -334,7 +354,10 @@ class RatingPredictor(TFModel):
         # this helps us load/save the model
         self.saver = tf.train.Saver(tf.global_variables(), write_version=tf.train.SaverDef.V2)
 
-    def _rnn(self, name, enc_inputs_ref, enc_inputs_hyp):
+    def _rnn(self, name, enc_inputs_ref, enc_inputs_hyp, enc_inputs_da=None):
+        """Build the rating prediction RNN structure.
+        @return: TensorFlow Output with the prediction
+        """
         # TODO fix using word2vec
         # -- tady nejaky if s embedding_lookup; na zacatku musim mit variable, a muzu si rict, ze bude trainable=False
         with tf.variable_scope('enc_ref') as scope:
@@ -350,9 +373,16 @@ class RatingPredictor(TFModel):
                 enc_cell_hyp = tf.nn.rnn_cell.EmbeddingWrapper(self.cell, self.dict_size, self.emb_size)
                 enc_outs_hyp, enc_state_hyp = tf.nn.rnn(enc_cell_hyp, enc_inputs_hyp, dtype=tf.float32)
 
+        if enc_inputs_da is not None:
+            with tf.variable_scope('enc_da'):
+                enc_cell_da = tf.nn.rnn_cell.EmbeddingWrapper(self.cell, self.da_dict_size, self.emb_size)
+                enc_outs_da, enc_state_da = tf.nn.rnn(enc_cell_da, enc_inputs_da, dtype=tf.float32)
+
         # concatenate last LSTM states & outputs (works for multilayer LSTMs&GRUs)
         last_outs_and_states = tf.concat(1, self._flatten_enc_state(enc_state_ref) +
-                                         self._flatten_enc_state(enc_state_hyp))
+                                         self._flatten_enc_state(enc_state_hyp) +
+                                         (self._flatten_enc_state(enc_state_da)
+                                          if enc_inputs_da is not None else []))
         state_size = int(last_outs_and_states.get_shape()[1])
         hidden = last_outs_and_states
 
@@ -388,7 +418,7 @@ class RatingPredictor(TFModel):
             return [x for x in enc_state]
         return [enc_state]
 
-    def _add_inputs_to_feed_dict(self, inputs_ref, inputs_hyp, fd):
+    def _add_inputs_to_feed_dict(self, fd, inputs_ref, inputs_hyp, inputs_da=None):
 
         fd[self.initial_state_ref] = np.zeros([inputs_ref.shape[0], self.emb_size])
         fd[self.initial_state_hyp] = np.zeros([inputs_hyp.shape[0], self.emb_size])
@@ -401,6 +431,12 @@ class RatingPredictor(TFModel):
             fd[input_] = slice_
         for input_, slice_ in zip(self.inputs_hyp, sliced_hyp):
             fd[input_] = slice_
+
+        if inputs_da is not None:
+            fd[self.initial_state_da] = np.zeros([inputs_da.shape[0], self.emb_size])
+            sliced_da = np.squeeze(np.array(np.split(inputs_da, len(inputs_da[0]), axis=1)), axis=2)
+            for input_, slice_ in zip(self.inputs_da, sliced_da):
+                fd[input_] = slice_
 
     def _training_pass(self, pass_no):
         """Perform one training pass through the whole training data, print statistics."""
@@ -421,7 +457,8 @@ class RatingPredictor(TFModel):
                                 for i in inst_nos))
 
             fd = {self.target: self.y[inst_nos]}
-            self._add_inputs_to_feed_dict(self.X_ref[inst_nos], self.X_hyp[inst_nos], fd)
+            self._add_inputs_to_feed_dict(fd, self.X_ref[inst_nos], self.X_hyp[inst_nos],
+                                          self.X_da[inst_nos] if self.da_enc else None)
             results, cost, _ = self.session.run([self.output, self.cost, self.train_func],
                                                 feed_dict=fd)
             log_debug('R: ' + str(results))
@@ -452,7 +489,7 @@ class RatingPredictor(TFModel):
         ratings = []
         targets = []
         for da, input_ref, input_hyp, target in zip(das, input_refs, input_hyps, raw_targets):
-            rating = self.rate([input_ref], [input_hyp])
+            rating = self.rate([input_ref], [input_hyp], [da] if self.da_enc else None)
             raw_ratings.append(rating)
             dists.append(abs(rating - target))  # calculate distance on raw ratings & targets
             rating = self._round_rating(rating)  # calculate accuracy & correlation on rounded

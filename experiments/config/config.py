@@ -28,4 +28,5 @@ config = {
           'predict_halves': True,
           'predict_coarse': None, #'train',
           'cell_type': 'lstm',
+          'da_enc': False,
         }
