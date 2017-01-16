@@ -71,6 +71,7 @@ if ( $config_data =~ /'dropout_keep_prob'\s*:\s*(0\.[0-9]*)/ ){
 }
 $nn_shape .= ' ' . ( ( $config_data =~ /'cell_type'\s*:\s*'([^']*)'/ )[0] // 'lstm' );
 $nn_shape .= ' +reuse'  if ( $config_data =~ /'reuse_embeddings'\s*:\s*True/ );
+$nn_shape .= ' +da_enc'  if ( $config_data =~ /'da_enc'\s*:\s*True/ );
 $nn_shape .= ' +1/2s'  if ( $config_data =~ /'predict_halves'\s*:\s*True/ );
 $nn_shape .= ' +co-t'  if ( $config_data =~ /'predict_coarse'\s*:\s*'train'/ );
 $nn_shape .= ' +co-e'  if ( $config_data =~ /'predict_coarse'\s*:\s*'test'/ );
