@@ -99,9 +99,10 @@ class RatingPredictor(TFModel):
             data['outputs_range_hi'] = self.outputs_range_hi
             if self.predict_ints:
                 data['num_outputs'] = self.num_outputs
-        if self.da_embs:
+        if self.da_enc:
             data['da_embs'] = self.da_embs
             data['da_dict_size'] = self.da_dict_size
+            data['da_input_shape'] = self.da_input_shape
         return data
 
     def _save_checkpoint(self):
@@ -189,6 +190,7 @@ class RatingPredictor(TFModel):
         """
         inputs_ref = np.array([self.embs.get_embeddings(sent) for sent in refs])
         inputs_hyp = np.array([self.embs.get_embeddings(sent) for sent in hyps])
+        inputs_da = None
         if das:
             inputs_da = np.array([self.da_embs.get_embeddings(da) for da in das])
         fd = {}
