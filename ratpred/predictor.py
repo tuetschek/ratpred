@@ -331,8 +331,8 @@ class RatingPredictor(TFModel):
             if self.cell_type.endswith('/2'):
                 self.cell = tf.nn.rnn_cell.MultiRNNCell([self.cell] * 2)
 
-            self.output = self._rnn('rnn', self.inputs_ref, self.inputs_hyp,
-                                    self.inputs_da if self.da_enc else None)
+            self.output = self._classif_net(self.inputs_ref, self.inputs_hyp,
+                                            self.inputs_da if self.da_enc else None)
 
         if self.predict_ints:
             # sigmoid cost -- predict a bunch of 1's and 0's (not just one 1)
@@ -357,59 +357,45 @@ class RatingPredictor(TFModel):
         # this helps us load/save the model
         self.saver = tf.train.Saver(tf.global_variables(), write_version=tf.train.SaverDef.V2)
 
-    def _rnn(self, name, enc_inputs_ref, enc_inputs_hyp, enc_inputs_da=None):
+    def _classif_net(self, enc_inputs_ref, enc_inputs_hyp, enc_inputs_da=None):
         """Build the rating prediction RNN structure.
         @return: TensorFlow Output with the prediction
         """
-        if self.word2vec_embs:
-            with tf.variable_scope('enc') as scope:
-                # load word2vec embeddings
-                emb_storage = tf.Variable(self.embs.get_w2v_matrix(),
-                                          trainable=(self.word2vec_embs == 'trainable'),
-                                          name='emb_storage')
-            with tf.variable_scope('enc_ref') as scope:
-                # linear transformation matrix, forcing the correct width
-                input_transform = tf.get_variable('input_transform',
-                                                  (self.embs.get_w2v_width(), self.emb_size),
-                                                  initializer=tf.random_normal_initializer(stddev=0.1))
-                enc_in_ref_emb = [tf.matmul(tf.nn.embedding_lookup(emb_storage, enc_input_ref),
-                                            input_transform)
-                                  for enc_input_ref in enc_inputs_ref]
-                enc_outs_ref, enc_state_ref = tf.nn.rnn(self.cell, enc_in_ref_emb, dtype=tf.float32)
-                if self.reuse_embeddings:
-                    scope.reuse_variables()
-                    enc_in_hyp_emb = [tf.matmul(tf.nn.embedding_lookup(emb_storage, enc_input_hyp),
-                                                input_transform)
-                                      for enc_input_hyp in enc_inputs_hyp]
-                    enc_outs_hyp, enc_state_hyp = tf.nn.rnn(self.cell, enc_in_hyp_emb, dtype=tf.float32)
+        # build embeddings
+        with tf.variable_scope('embs') as scope:
+            if self.word2vec_embs:
+                self.emb_storage = tf.Variable(self.embs.get_w2v_matrix(),
+                    trainable=(self.word2vec_embs == 'trainable'),
+                    name='emb_storage')
+                self.emb_transform = tf.get_variable('emb_transform',
+                    (self.embs.get_w2v_width(), self.emb_size),
+                    initializer=tf.random_normal_initializer(stddev=0.1))
 
-            if not self.reuse_embeddings:
-                with tf.variable_scope('enc_hyp'):
-                    input_transform = tf.get_variable('input_transform',
-                                                      (self.embs.get_w2v_width(), self.emb_size),
-                                                      initializer=tf.random_normal_initializer(stddev=0.1))
-                    enc_in_hyp_emb = [tf.matmul(tf.nn.embedding_lookup(emb_storage, enc_input_hyp),
-                                                input_transform)
-                                      for enc_input_hyp in enc_inputs_hyp]
-                    enc_outs_hyp, enc_state_hyp = tf.nn.rnn(self.cell, enc_in_hyp_emb, dtype=tf.float32)
+                def apply_emb(enc_inp):
+                    return tf.matmul(tf.nn.embedding_lookup(self.emb_storage, enc_inp),
+                                     self.emb_transform)
+            else:
+                sqrt3 = math.sqrt(3)
+                self.emb_storage = tf.get_variable('emb_storage',
+                    (self.dict_size, self.emb_size),
+                    initializer=tf.random_uniform_initializer(-sqrt3, sqrt3))
+                def apply_emb(enc_inp):
+                    return tf.nn.embedding_lookup(self.emb_storage, enc_inp)
+
+        # apply RNN over embeddings
+        with tf.variable_scope('enc_ref') as scope:
+            enc_in_ref_emb = [apply_emb(enc_inp) for enc_inp in enc_inputs_ref]
+            enc_outs_ref, enc_state_ref = tf.nn.rnn(self.cell, enc_in_ref_emb, dtype=tf.float32)
+
+        if self.reuse_embeddings:
+            scope = tf.variable_scope('enc_ref')
+            scope.reuse_variables()
         else:
-            with tf.variable_scope('enc_ref') as scope:
-                enc_cell_ref = tf.nn.rnn_cell.EmbeddingWrapper(self.cell, self.dict_size, self.emb_size)
-                enc_outs_ref, enc_state_ref = tf.nn.rnn(enc_cell_ref, enc_inputs_ref, dtype=tf.float32)
-                if self.reuse_embeddings:
-                    scope.reuse_variables()
-                    enc_cell_hyp = tf.nn.rnn_cell.EmbeddingWrapper(self.cell, self.dict_size, self.emb_size)
-                    enc_outs_hyp, enc_state_hyp = tf.nn.rnn(enc_cell_hyp, enc_inputs_hyp, dtype=tf.float32)
+            scope = tf.variable_scope('enc_hyp')
 
-            if not self.reuse_embeddings:
-                with tf.variable_scope('enc_hyp'):
-                    enc_cell_hyp = tf.nn.rnn_cell.EmbeddingWrapper(self.cell, self.dict_size, self.emb_size)
-                    enc_outs_hyp, enc_state_hyp = tf.nn.rnn(enc_cell_hyp, enc_inputs_hyp, dtype=tf.float32)
-
-        if enc_inputs_da is not None:
-            with tf.variable_scope('enc_da'):
-                enc_cell_da = tf.nn.rnn_cell.EmbeddingWrapper(self.cell, self.da_dict_size, self.emb_size)
-                enc_outs_da, enc_state_da = tf.nn.rnn(enc_cell_da, enc_inputs_da, dtype=tf.float32)
+        with scope:
+            enc_in_hyp_emb = [apply_emb(enc_inp) for enc_inp in enc_inputs_hyp]
+            enc_outs_hyp, enc_state_hyp = tf.nn.rnn(self.cell, enc_in_hyp_emb, dtype=tf.float32)
 
         # concatenate last LSTM states & outputs (works for multilayer LSTMs&GRUs)
         last_outs_and_states = tf.concat(1, self._flatten_enc_state(enc_state_ref) +
@@ -422,18 +408,18 @@ class RatingPredictor(TFModel):
         if self.tanh_layers > 0:
             with tf.variable_scope('hidden'):
                 for layer_no in xrange(self.tanh_layers):
-                    h_w = tf.get_variable(name + '-w' + str(layer_no + 1),
+                    h_w = tf.get_variable('final-ff-w' + str(layer_no + 1),
                                           (state_size, state_size),
                                           initializer=tf.random_normal_initializer(stddev=0.1))
-                    h_b = tf.get_variable(name + '-b' + str(layer_no + 1),
+                    h_b = tf.get_variable('final-ff-b' + str(layer_no + 1),
                                           (state_size,),
                                           initializer=tf.constant_initializer())
                     hidden = tf.tanh(tf.matmul(hidden, h_w) + h_b)
 
         with tf.variable_scope('classif'):
-            w = tf.get_variable(name + '-w', (state_size, self.num_outputs),
+            w = tf.get_variable('final-transf-w', (state_size, self.num_outputs),
                                 initializer=tf.random_normal_initializer(stddev=0.1))
-            b = tf.get_variable(name + '-b', (self.num_outputs,),
+            b = tf.get_variable('final-transf-b', (self.num_outputs,),
                                 initializer=tf.constant_initializer())
 
         return tf.matmul(hidden, w) + b
