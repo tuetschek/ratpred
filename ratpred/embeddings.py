@@ -75,3 +75,6 @@ class Word2VecEmbeddingExtract(EmbeddingExtract):
 
     def get_w2v_dict_size(self):
         return len(self._w2v.vocab)
+
+    def get_w2v_width(self):
+        return self._w2v.vector_size
