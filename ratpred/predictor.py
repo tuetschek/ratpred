@@ -397,6 +397,11 @@ class RatingPredictor(TFModel):
             enc_in_hyp_emb = [apply_emb(enc_inp) for enc_inp in enc_inputs_hyp]
             enc_outs_hyp, enc_state_hyp = tf.nn.rnn(self.cell, enc_in_hyp_emb, dtype=tf.float32)
 
+        if enc_inputs_da is not None:
+            with tf.variable_scope('enc_da'):
+                enc_cell_da = tf.nn.rnn_cell.EmbeddingWrapper(self.cell, self.da_dict_size, self.emb_size)
+                enc_outs_da, enc_state_da = tf.nn.rnn(enc_cell_da, enc_inputs_da, dtype=tf.float32)
+
         # concatenate last LSTM states & outputs (works for multilayer LSTMs&GRUs)
         last_outs_and_states = tf.concat(1, self._flatten_enc_state(enc_state_ref) +
                                          self._flatten_enc_state(enc_state_hyp) +
