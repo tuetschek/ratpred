@@ -78,3 +78,73 @@ class Word2VecEmbeddingExtract(EmbeddingExtract):
 
     def get_w2v_width(self):
         return self._w2v.vector_size
+
+
+class CharEmbeddingExtract(EmbeddingExtract):
+    """Extracting token embeddings from a string (array of words)."""
+
+    VOID = 0
+    GO = 1
+    STOP = 2
+    UNK = 3
+    SPACE = 4
+    MIN_VALID = 5
+
+    def __init__(self, cfg={}):
+        self.max_sent_len = cfg.get('max_sent_len', 200)
+        self.dict = {'<STOP>': self.STOP, '<VOID>': self.VOID, ' ': self.SPACE,
+                     '<GO>': self.GO, '<UNK>': self.UNK}
+        self.rev_dict = {self.VOID: '<VOID>', self.GO: '<GO>',
+                         self.STOP: '<STOP>', self.UNK: '<UNK>',
+                         self.SPACE: ' ', }
+        self.reverse = cfg.get('reverse', False)
+
+    def init_dict(self, train_sents, dict_ord=None):
+        """Initialize embedding dictionary (word -> id)."""
+        if dict_ord is None:
+            dict_ord = self.MIN_VALID
+
+        for sent in train_sents:
+            for form, tag in sent:
+                for char in form:
+                    if char not in self.dict:
+                        self.dict[char] = dict_ord
+                        self.rev_dict[dict_ord] = char
+                        dict_ord += 1
+        return dict_ord
+
+    def get_embeddings(self, sent):
+        """Get the embeddings of a sentence (list of word form/tag pairs)."""
+        embs = [self.GO]
+        for form, tag in sent:
+            if len(embs) > 1:
+                embs.append(self.dict[' '])
+            for char in form:
+                # append the token ID, or <UNK>
+                embs.append(self.dict.get(char, self.UNK))
+
+        embs += [self.STOP]
+        if len(embs) > self.max_sent_len + 2:
+            embs = embs[:self.max_sent_len + 2]
+        elif len(embs) < self.max_sent_len + 2:
+            embs += [self.VOID] * (self.max_sent_len + 2 - len(embs))
+
+        if self.reverse:
+            return list(reversed(embs))
+        return embs
+
+    def get_embeddings_shape(self):
+        """Return the shape of the embedding matrix (for one object, disregarding batches)."""
+        return [self.max_sent_len + 2]
+
+    def ids_to_strings(self, emb):
+        """Given embedding IDs, return list of strings where all VOIDs at the end are truncated."""
+
+        # skip VOIDs at the end
+        i = len(emb) - 1
+        while i > 0 and emb[i] == self.VOID:
+            i -= 1
+
+        # convert all IDs to their characters
+        ret = ''.join([unicode(self.rev_dict.get(tok_id, '<???>')) for tok_id in emb[:i + 1]])
+        return ret.split(' ')

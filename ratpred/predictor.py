@@ -26,7 +26,7 @@ from tgen.embeddings import TokenEmbeddingSeq2SeqExtract, DAEmbeddingSeq2SeqExtr
 from tgen.tf_ml import TFModel
 
 from ratpred.futil import read_data, write_outputs
-from ratpred.embeddings import Word2VecEmbeddingExtract
+from ratpred.embeddings import Word2VecEmbeddingExtract, CharEmbeddingExtract
 
 
 def sigmoid(nums):
@@ -44,8 +44,11 @@ class RatingPredictor(TFModel):
         self.cell_type = cfg.get('cell_type', 'lstm')
         cfg['reverse'] = True  # embeddings should always be reversed
         self.word2vec_embs = cfg.get('word2vec_embs', None)
+        self.char_embs = cfg.get('char_embs', False)
         if self.word2vec_embs and 'word2vec_model' in cfg:
             self.embs = Word2VecEmbeddingExtract(cfg)
+        elif self.char_embs:
+            self.embs = CharEmbeddingExtract(cfg)
         else:
             self.embs = TokenEmbeddingSeq2SeqExtract(cfg)
 
@@ -487,7 +490,7 @@ class RatingPredictor(TFModel):
             log_debug('INST-NOS: ' + str(inst_nos))
             log_debug("\n".join(' '.join([tok for tok, _ in self.train_hyps[i]]) + "\n" +
                                 ' '.join([tok for tok, _ in self.train_refs[i]]) + "\n" +
-                                ' '.join([tok for tok, _ in self.train_das[i]]) + "\n" +
+                                unicode(self.train_das[i]) + "\n" +
                                 unicode(self.y[i])
                                 for i in inst_nos))
 
