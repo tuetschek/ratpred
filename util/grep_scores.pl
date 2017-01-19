@@ -50,8 +50,8 @@ while ( my $line = <$fh> ) {
     }
     if ( $line =~ /(Pearson|Spearman) correlation:/i ) {
         my $letter = substr($1, 0, 1);
-        my ($corr, $pv ) = ($line =~ /([0-9.]+) \(p-value ([0-9.]+)\)/);
-        $pr .= rg( 0, 1, $corr ) . "$letter $corr\e[0m  ";
+        my ($sign, $corr, $pv) = ($line =~ /([ -])([0-9.]+) \(p-value ([0-9.]+)\)/);
+        $pr .= rg( 0, 1, $corr ) . "$letter$sign$corr\e[0m  ";
     }
 
 }

@@ -94,7 +94,7 @@ foreach my $pattern (@patterns) {
     my $out  = "";
     my $endpos = pos $line;
 
-    while ( $line =~ m/([0-9]+\.[0-9]+)/g ) {
+    while ( $line =~ m/(-?[0-9]+\.[0-9]+)/g ) {
         my $num    = $1;
         $endpos = pos $line;
         $out .= substr( $line, length($out), $endpos - length($out) - length($num) );
