@@ -73,11 +73,12 @@ if __name__ == '__main__':
     ap = ArgumentParser()
     ap.add_argument('-m', '--median', action='store_true',
                     help='Group human ratings and use medians')
-    ap.add_argument('-n', '--normalize', type=str, help='List of columns to normalize')
+    ap.add_argument('-n', '--normalize', type=str,
+                    help='Comma-separated list of columns to normalize')
     ap.add_argument('-q', '--quantize', type=str,
-                    help='List of columns to quantize (assumes normalized data)')
+                    help='Comma-separated list of columns to quantize (assumes they are normalized)')
     ap.add_argument('-f', '--flip', type=str,
-                    help='List of columns to flip (assumes normalized data)')
+                    help='Comma-separated list of columns to flip (assumes they are normalized)')
     ap.add_argument('-r', '--add-random', type=str,
                     help='Add random column with the given name')
     ap.add_argument('input_file', type=str, help='Path to the input file')
