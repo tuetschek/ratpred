@@ -49,7 +49,11 @@ def convert(args):
     if args.add_random:
         log_info("Adding random column '%s'..." % args.add_random)
         df[args.add_random] = [np.random.random() for _ in xrange(len(df))]
-        cols = cols[:-3] + [args.add_random] + cols[-3:]
+        try:
+            pos = cols.index('informativeness')
+        except:
+            pos = -1
+        cols = cols[:pos] + [args.add_random] + cols[pos:]
 
     if args.flip:
         log_info("Flipping '%s'..." % args.flip.split(','))
