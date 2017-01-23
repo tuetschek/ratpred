@@ -7,6 +7,7 @@ TODO
 
 from __future__ import unicode_literals
 import pandas as pd
+import numpy as np
 
 from tgen.data import DA
 from tgen.futil import tokenize
@@ -15,6 +16,9 @@ from tgen.delex import delex_sent
 
 def read_data(filename, target_col, delex_slots, delex_slot_names=False):
     data = pd.read_csv(filename, sep=b"\t", encoding='UTF-8')
+
+    # force data type to string if the data set doesn't contain human references
+    data['orig_ref'] = data['orig_ref'].apply(lambda x: '' if np.isnan(x) else x)
 
     das = [DA.parse_cambridge_da(da) for da in data['mr']]
     texts_ref = [[(tok, None)
