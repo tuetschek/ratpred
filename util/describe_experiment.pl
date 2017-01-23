@@ -59,6 +59,7 @@ if ($portion < 1.0){
     $training_set .= '/' . $portion;
 }
 $training_set .= ' -slotn' if ( $config_data =~ /'delex_slot_names'\s*:\s*True/ );
+$training_set .= ' +lex' if ( $config_data !~ /'delex_slots'\s*:\s*'[^']/ );
 $training_data = $training_set . ' -> ' . ( ( $config_data =~ /'target_col'\s*:\s*'([^']*)'/ )[0] // 'quality' );
 
 
