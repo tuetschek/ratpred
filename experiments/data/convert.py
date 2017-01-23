@@ -34,8 +34,16 @@ def convert(args):
     """
 
     log_info("Loading %s..." % args.input_file)
-    data = pd.read_csv(args.input_file)
+    data = pd.read_csv(args.input_file, index_col=None)
     log_info("Contains %d instances." % len(data))
+
+    # add dummy judge ids so that pandas does not drop stuff when groupping :-(
+    data['judge_id'] = data['judge_id'].apply(lambda x: x if not np.isnan(x) else -1)
+
+    if args.delete_refs:
+        log_info("Deleting human references...")
+        group_cols = list(set(data.columns) - set(['orig_ref']))
+        data = data.groupby(group_cols, as_index=False).agg(lambda vals: "")
     if args.median:
         log_info("Computing medians...")
         group_cols = list(set(data.columns) - set(['informativeness', 'naturalness',
@@ -84,6 +92,10 @@ def convert(args):
         labels = cv_labels
         parts = cv_parts
 
+    if not os.path.isdir(args.output_dir):
+        log_info("Directory %s not found, creating..." % args.output_dir)
+        os.mkdir(args.output_dir)
+
     for label, part in zip(labels, parts):
         # write the output
         log_info("Writing part %s (size %d)..." % (label, len(part)))
@@ -105,8 +117,10 @@ if __name__ == '__main__':
                     help='Shuffle data before dividing?')
     ap.add_argument('-m', '--median', action='store_true',
                     help='Group human ratings and use medians')
-    ap.add_argument('-c', '--concat_refs', action='store_true',
-                    help='Join and concatenate all references?')
+    ap.add_argument('-D', '--delete-refs', action='store_true',
+                    help='Remove human references (set field to "") and de-duplicate')
+    ap.add_argument('-c', '--concat-refs', action='store_true',
+                    help='Concatenate all human references and de-deduplicate')
     ap.add_argument('-v', '--cv', action='store_true',
                     help='Create cross-validation files (as many parts as ' +
                     'there are in the data split ratio)?')
