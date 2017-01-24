@@ -30,6 +30,7 @@ config = {
           'predict_halves': True,
           'predict_coarse': None, #'train',
           'cell_type': 'lstm',
+          'hyp_enc': True,
           'ref_enc': True,
           'da_enc': False,
         }
