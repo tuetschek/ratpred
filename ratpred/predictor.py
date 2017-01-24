@@ -383,20 +383,24 @@ class RatingPredictor(TFModel):
                     self.embs.get_w2v_matrix(),
                     trainable=(self.word2vec_embs == 'trainable'),
                     name='emb_storage')
-                self.emb_transform = tf.get_variable(
-                    'emb_transform',
-                    (self.embs.get_w2v_width(), self.emb_size),
-                    initializer=tf.random_normal_initializer(stddev=0.1))
-
-                def apply_emb(enc_inp):
-                    return tf.matmul(tf.nn.embedding_lookup(self.emb_storage, enc_inp),
-                                     self.emb_transform)
+                if self.emb_size != self.embs.get_w2v_width():
+                    self.emb_transform = tf.get_variable(
+                        'emb_transform',
+                        (self.embs.get_w2v_width(), self.emb_size),
+                        initializer=tf.random_normal_initializer(stddev=0.1))
             else:
                 sqrt3 = math.sqrt(3)
                 self.emb_storage = tf.get_variable(
                     'emb_storage',
                     (self.dict_size, self.emb_size),
                     initializer=tf.random_uniform_initializer(-sqrt3, sqrt3))
+
+            if self.word2vec_embs and self.emb_size != self.embs.get_w2v_width():
+
+                def apply_emb(enc_inp):
+                    return tf.matmul(tf.nn.embedding_lookup(self.emb_storage, enc_inp),
+                                     self.emb_transform)
+            else:
 
                 def apply_emb(enc_inp):
                     return tf.nn.embedding_lookup(self.emb_storage, enc_inp)
