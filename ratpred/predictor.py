@@ -206,13 +206,19 @@ class RatingPredictor(TFModel):
         # TODO possibly need to transpose the output here as well
         # TODO the rest does not support batches even if the previous does !!!
         val = self.session.run(self.output, feed_dict=fd)
+        return float(self._adjust_output(val))
+
+    def _adjust_output(self, val, no_sigmoid=False):
         if self.predict_ints:
             # do the actual sigmoid + squeeze it into our range (using defined coarseness)
             coeff = self._rounding_step('train')
-            return min(coeff * np.sum(sigmoid(val)) + self.outputs_range_lo, self.outputs_range_hi)
+            if not no_sigmoid:
+                val = sigmoid(val)
+            return np.clip(coeff * np.sum(val, axis=1, keepdims=True) + self.outputs_range_lo,
+                           self.outputs_range_lo, self.outputs_range_hi)
         else:
             # just squeeze the output float value into our range
-            return max(float(self.outputs_range_lo), min(float(self.outputs_range_hi), float(val)))
+            return np.clip(val, self.outputs_range_lo, self.outputs_range_hi)
 
     def _divide_inputs(self, inputs, trunc_size=None):
         size = trunc_size if trunc_size is not None else len(inputs)
@@ -305,7 +311,7 @@ class RatingPredictor(TFModel):
 
     def _round_rating(self, rating, mode='test'):
         step = self._rounding_step(mode)
-        return self.outputs_range_lo + round((rating - self.outputs_range_lo) / step) * step
+        return self.outputs_range_lo + np.round((rating - self.outputs_range_lo) / step) * step
 
     def _ratings_to_binary(self, ints):
         """Transform input int/half-int values into list of binaries (1's lower than
@@ -524,6 +530,8 @@ class RatingPredictor(TFModel):
         log_debug("Train order: " + str(self.train_order))
 
         pass_cost = 0
+        pass_corr = 0
+        pass_dist = 0
 
         for inst_nos in self._batches():
 
@@ -537,22 +545,34 @@ class RatingPredictor(TFModel):
             fd = {self.target: self.y[inst_nos]}
             self._add_inputs_to_feed_dict(fd, self.X_hyp[inst_nos] if self.hyp_enc else None,
                                           self.X_ref[inst_nos] if self.ref_enc else None,
-                                          self.X_da[inst_nos] if self.da_enc else None)
+                                          self.X_da[inst_nos] if self.da_enc else None,
+                                          True)
             results, cost, _ = self.session.run([self.output, self.cost, self.train_func],
                                                 feed_dict=fd)
-            log_debug('R: ' + str(results))
-            log_debug('COST: %f' % cost)
 
+            pred = self._adjust_output(results)
+            true = self._adjust_output(self.y[inst_nos], no_sigmoid=True)
+            dist = np.sum(np.abs(pred - true))
+            corr = np.sum(self._round_rating(pred) == self._round_rating(true))
+
+            log_debug('R: ' + str(results))
+            log_debug('COST: %f, corr %d/%d, dist %.3f' % (cost, corr, len(inst_nos), dist))
+
+            pass_dist += dist
+            pass_corr += corr
             pass_cost += cost
 
         # print and return statistics
         self._print_pass_stats(pass_no, datetime.timedelta(seconds=(time.time() - pass_start_time)),
-                               pass_cost)
+                               pass_cost,
+                               float(pass_corr) / len(self.train_hyps),
+                               pass_dist / len(self.train_hyps))
 
         return pass_cost
 
-    def _print_pass_stats(self, pass_no, time, cost):
-        log_info('PASS %03d: duration %s, cost %f' % (pass_no, str(time), cost))
+    def _print_pass_stats(self, pass_no, time, cost, acc, avg_dist):
+        log_info('PASS %03d: duration %s, cost %f, acc %.3f, avg. dist %.3f' %
+                 (pass_no, str(time), cost, acc, avg_dist))
 
     def evaluate(self, inputs, raw_targets, output_file=None):
         """
