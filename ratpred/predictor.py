@@ -66,6 +66,7 @@ class RatingPredictor(TFModel):
         self.alpha = cfg.get('alpha', 0.1)
         self.randomize = cfg.get('randomize', True)
         self.batch_size = cfg.get('batch_size', 1)
+        self.dropout_keep_prob = cfg.get('dropout_keep_prob', 1.0)
 
         self.validation_size = cfg.get('validation_size', 0)
         self.validation_freq = cfg.get('validation_freq', 10)
@@ -325,16 +326,21 @@ class RatingPredictor(TFModel):
 
         with tf.variable_scope(self.scope_name):
 
+            self.train_mode = tf.placeholder(tf.bool, [], name='train_mode')
+
             if self.hyp_enc:
-                self.initial_state_hyp = tf.placeholder(tf.float32, [None, self.emb_size])
+                self.initial_state_hyp = tf.placeholder(tf.float32, [None, self.emb_size],
+                                                        name='enc_inp_hyp_init')
                 self.inputs_hyp = [tf.placeholder(tf.int32, [None], name=('enc_inp_hyp-%d' % i))
                                    for i in xrange(self.input_shape[0])]
             if self.ref_enc:
-                self.initial_state_ref = tf.placeholder(tf.float32, [None, self.emb_size])
+                self.initial_state_ref = tf.placeholder(tf.float32, [None, self.emb_size],
+                                                        name='enc_inp_ref_init')
                 self.inputs_ref = [tf.placeholder(tf.int32, [None], name=('enc_inp_ref-%d' % i))
                                    for i in xrange(self.input_shape[0])]
             if self.da_enc:
-                self.initial_state_da = tf.placeholder(tf.float32, [None, self.emb_size])
+                self.initial_state_da = tf.placeholder(tf.float32, [None, self.emb_size],
+                                                       name='enc_inp_da_init')
                 self.inputs_da = [tf.placeholder(tf.int32, [None], name=('enc_inp_da-%d' % i))
                                   for i in xrange(self.da_input_shape[0])]
 
@@ -372,6 +378,14 @@ class RatingPredictor(TFModel):
         # this helps us load/save the model
         self.saver = tf.train.Saver(tf.global_variables(), write_version=tf.train.SaverDef.V2)
 
+    def _dropout(self, variable):
+        if self.dropout_keep_prob == 1.0:
+            return variable
+        train_mode_mask = tf.fill(tf.shape(variable)[:1], self.train_mode)
+        return tf.select(train_mode_mask,
+                         tf.nn.dropout(variable, self.dropout_keep_prob),
+                         variable)
+
     def _classif_net(self, enc_inputs_hyp=None, enc_inputs_ref=None, enc_inputs_da=None):
         """Build the rating prediction RNN structure.
         @return: TensorFlow Output with the prediction
@@ -398,12 +412,13 @@ class RatingPredictor(TFModel):
             if self.word2vec_embs and self.emb_size != self.embs.get_w2v_width():
 
                 def apply_emb(enc_inp):
-                    return tf.matmul(tf.nn.embedding_lookup(self.emb_storage, enc_inp),
-                                     self.emb_transform)
+                    return self._dropout(
+                        tf.matmul(tf.nn.embedding_lookup(self.emb_storage, enc_inp),
+                                  self.emb_transform))
             else:
 
                 def apply_emb(enc_inp):
-                    return tf.nn.embedding_lookup(self.emb_storage, enc_inp)
+                    return self._dropout(tf.nn.embedding_lookup(self.emb_storage, enc_inp))
 
         # apply RNN over embeddings
         if enc_inputs_hyp is not None:
@@ -424,8 +439,14 @@ class RatingPredictor(TFModel):
 
         if enc_inputs_da is not None:
             with tf.variable_scope('enc_da'):
-                enc_cell_da = tf.nn.rnn_cell.EmbeddingWrapper(self.cell, self.da_dict_size, self.emb_size)
-                enc_outs_da, enc_state_da = tf.nn.rnn(enc_cell_da, enc_inputs_da, dtype=tf.float32)
+                sqrt3 = math.sqrt(3)
+                self.da_emb_storage = tf.get_variable(
+                    'emb_storage',
+                    (self.da_dict_size, self.emb_size),
+                    initializer=tf.random_uniform_initializer(-sqrt3, sqrt3))
+                enc_in_da_emb = [self._dropout(tf.nn.embedding_lookup(self.da_emb_storage, enc_inp))
+                                 for enc_inp in enc_inputs_da]
+                enc_outs_da, enc_state_da = tf.nn.rnn(self.cell, enc_in_da_emb, dtype=tf.float32)
 
         # concatenate last LSTM states & outputs (works for multilayer LSTMs&GRUs)
         last_outs_and_states = tf.concat(1, (self._flatten_enc_state(enc_state_hyp)
@@ -469,7 +490,11 @@ class RatingPredictor(TFModel):
             return [x for x in enc_state]
         return [enc_state]
 
-    def _add_inputs_to_feed_dict(self, fd, inputs_hyp=None, inputs_ref=None, inputs_da=None):
+    def _add_inputs_to_feed_dict(self, fd,
+                                 inputs_hyp=None, inputs_ref=None, inputs_da=None,
+                                 train_mode=False):
+
+        fd[self.train_mode] = train_mode
 
         if inputs_hyp is not None:
             fd[self.initial_state_hyp] = np.zeros([inputs_hyp.shape[0], self.emb_size])
