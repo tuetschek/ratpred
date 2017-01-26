@@ -54,6 +54,8 @@ class RatingPredictor(TFModel):
 
         self.da_enc = cfg.get('da_enc', False)
         if self.da_enc:
+            if self.da_enc == 'token':
+                self.da_embs = TokenEmbeddingSeq2SeqExtract(cfg)
             self.da_embs = DAEmbeddingSeq2SeqExtract(cfg)
 
         self.ref_enc = cfg.get('ref_enc', True)
@@ -149,15 +151,19 @@ class RatingPredictor(TFModel):
         ret.saver.restore(ret.session, tf_session_fname)
         return ret
 
+    def load_data(self, data_file):
+        """Load a data file, return inputs and targets."""
+        return read_data(data_file, self.target_col,
+                         'text' if self.da_enc == 'token' else 'cambridge',
+                         self.delex_slots, self.delex_slot_names)
+
     def train(self, train_data_file, valid_data_file=None, data_portion=1.0):
         """Run training on the given training data.
         """
-        inputs, targets = read_data(train_data_file, self.target_col,
-                                    self.delex_slots, self.delex_slot_names)
+        inputs, targets = self.load_data(train_data_file)
         valid_inputs, valid_targets = None, None
         if valid_data_file:
-            valid_inputs, valid_targets = read_data(valid_data_file, self.target_col,
-                                                    self.delex_slots, self.delex_slot_names)
+            valid_inputs, valid_targets = self.load_data(valid_data_file)
         log_info('Training rating predictor...')
 
         # initialize training

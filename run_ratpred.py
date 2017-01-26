@@ -41,7 +41,7 @@ def test(args):
     rp = RatingPredictor.load_from_file(args.model_file)
 
     log_info("Loading test data from %s..." % args.test_data)
-    inputs, targets = read_data(args.test_data, rp.target_col, rp.delex_slots, rp.delex_slot_names)
+    inputs, targets = rp.load_data(args.test_data)
 
     log_info("Rating %d instances..." % len(inputs))
     results = rp.evaluate(inputs, targets, args.write_outputs)
