@@ -24,7 +24,7 @@ class DummyTensorBoardLogger(object):
     def get_merged_summaries(self):
         return tf.constant(0.0, dtype=tf.float32, name='dummy_summary')
 
-    def log(self):
+    def log(self, cur_step, merged_summaries):
         pass
 
 class TensorBoardLogger(DummyTensorBoardLogger):
