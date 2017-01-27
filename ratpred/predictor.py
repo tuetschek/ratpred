@@ -27,6 +27,7 @@ from tgen.tf_ml import TFModel
 
 from ratpred.futil import read_data, write_outputs
 from ratpred.embeddings import Word2VecEmbeddingExtract, CharEmbeddingExtract
+from ratpred.tb_logging import DummyTensorBoardLogger, TensorBoardLogger
 
 
 def sigmoid(nums):
@@ -86,6 +87,11 @@ class RatingPredictor(TFModel):
         self.predict_halves = cfg.get('predict_halves', False)
         self.predict_coarse = cfg.get('predict_coarse', None)
         self.num_outputs = 1  # will be changed in training if predict_ints is True
+
+        self.tb_logger = DummyTensorBoardLogger()
+
+    def set_tensorboard_logging(self, log_dir, run_id):
+        self.tb_logger = TensorBoardLogger(log_dir, run_id)
 
     def save_to_file(self, model_fname):
         """Save the predictor to a file (actually two files, one for configuration and one
@@ -182,11 +188,10 @@ class RatingPredictor(TFModel):
                     iter_no > self.min_passes and iter_no % self.validation_freq == 0):
 
                 results = self.evaluate(self.valid_inputs, self.valid_y)
-                log_info('Validation distance: %.3f (avg: %.3f), accuracy %.3f' %
-                         (results['dist_total'], results['dist_avg'], results['accuracy']))
 
                 comb_cost = len(self.valid_inputs) * results['accuracy'] + 100 * results['dist_total'] + pass_cost
-                log_info('Combined validation cost: %.3f' % comb_cost)
+                results['comb_cost'] = comb_cost
+                self._print_valid_stats(iter_no, results)
 
                 # if we have the best model so far, save it as a checkpoint (overwrite previous)
                 if math.isnan(top_cost) or comb_cost < top_cost:
@@ -377,8 +382,11 @@ class RatingPredictor(TFModel):
             # NB: needs to compute mean over axis=0 only, otherwise it won't work (?)
             self.cost = tf.reduce_mean(tf.square(self.target - self.output), axis=0)
 
+        self.tb_logger.create_tensor_summaries(self.cost)
+
         self.optimizer = tf.train.AdamOptimizer(self.alpha)
         self.train_func = self.optimizer.minimize(self.cost)
+        self.tensor_summaries = self.tb_logger.get_merged_summaries()
 
         # initialize session
         session_config = None
@@ -420,6 +428,7 @@ class RatingPredictor(TFModel):
                     'emb_storage',
                     (self.dict_size, self.emb_size),
                     initializer=tf.random_uniform_initializer(-sqrt3, sqrt3))
+            self.tb_logger.create_tensor_summaries(self.emb_storage)
 
             if self.word2vec_embs and self.emb_size != self.embs.get_w2v_width():
 
@@ -459,6 +468,7 @@ class RatingPredictor(TFModel):
                 enc_in_da_emb = [self._dropout(tf.nn.embedding_lookup(self.da_emb_storage, enc_inp))
                                  for enc_inp in enc_inputs_da]
                 enc_outs_da, enc_state_da = tf.nn.rnn(self.cell, enc_in_da_emb, dtype=tf.float32)
+                self.tb_logger.create_tensor_summaries(self.da_emb_storage)
 
         # concatenate last LSTM states & outputs (works for multilayer LSTMs&GRUs)
         last_outs_and_states = tf.concat(1, (self._flatten_enc_state(enc_state_hyp)
@@ -469,6 +479,7 @@ class RatingPredictor(TFModel):
                                           if enc_inputs_da is not None else []))
         state_size = int(last_outs_and_states.get_shape()[1])
         hidden = last_outs_and_states
+        self.tb_logger.create_tensor_summaries(hidden)
 
         if self.tanh_layers > 0:
             with tf.variable_scope('hidden'):
@@ -480,12 +491,15 @@ class RatingPredictor(TFModel):
                                           (state_size,),
                                           initializer=tf.constant_initializer())
                     hidden = tf.tanh(tf.matmul(hidden, h_w) + h_b)
+                    self.tb_logger.create_tensor_summaries(hidden)
 
         with tf.variable_scope('classif'):
             w = tf.get_variable('final-transf-w', (state_size, self.num_outputs),
                                 initializer=tf.random_normal_initializer(stddev=0.1))
             b = tf.get_variable('final-transf-b', (self.num_outputs,),
                                 initializer=tf.constant_initializer())
+            self.tb_logger.create_tensor_summaries(w)
+            self.tb_logger.create_tensor_summaries(b)
 
         return tf.matmul(hidden, w) + b
 
@@ -535,12 +549,14 @@ class RatingPredictor(TFModel):
         log_debug('\n***\nTR %05d:' % pass_no)
         log_debug("Train order: " + str(self.train_order))
 
+        pass_insts = 0
         pass_cost = 0
         pass_corr = 0
         pass_dist = 0
 
         for inst_nos in self._batches():
 
+            pass_insts += len(inst_nos)
             log_debug('INST-NOS: ' + str(inst_nos))
             log_debug("\n".join(' '.join([tok for tok, _ in self.train_hyps[i]]) + "\n" +
                                 ' '.join([tok for tok, _ in self.train_refs[i]]) + "\n" +
@@ -553,8 +569,15 @@ class RatingPredictor(TFModel):
                                           self.X_ref[inst_nos] if self.ref_enc else None,
                                           self.X_da[inst_nos] if self.da_enc else None,
                                           True)
-            results, cost, _ = self.session.run([self.output, self.cost, self.train_func],
-                                                feed_dict=fd)
+
+            required = [self.output, self.cost, self.train_func]
+            if pass_insts == len(self.train_hyps):  # last batch
+                required.append(self.tensor_summaries)
+            outputs = self.session.run(required, feed_dict=fd)
+            results = outputs[0]
+            cost = outputs[1]
+            if pass_insts == len(self.train_hyps):
+                self.tb_logger.log(pass_no, outputs[3])
 
             pred = self._adjust_output(results)
             true = self._adjust_output(self.y[inst_nos], no_sigmoid=True)
@@ -579,6 +602,18 @@ class RatingPredictor(TFModel):
     def _print_pass_stats(self, pass_no, time, cost, acc, avg_dist):
         log_info('PASS %03d: duration %s, cost %f, acc %.3f, avg. dist %.3f' %
                  (pass_no, str(time), cost, acc, avg_dist))
+        self.tb_logger.add_to_log(pass_no, {'train_pass_duration': time.total_seconds(),
+                                            'train_cost': cost,
+                                            'train_accuracy': acc,
+                                            'train_dist_avg': avg_dist})
+
+    def _print_valid_stats(self, pass_no, results):
+        """Print validation results for the given training pass number."""
+        log_info('Validation distance: %.3f (avg: %.3f), accuracy %.3f, combined cost %.3f' %
+                 tuple(results[key]
+                       for key in ['dist_total', 'dist_avg', 'accuracy', 'comb_cost']))
+        self.tb_logger.add_to_log(pass_no, {'valid_' + key: value
+                                            for key, value in results.iteritems()})
 
     def evaluate(self, inputs, raw_targets, output_file=None):
         """

@@ -13,7 +13,6 @@ from tgen.debug import exc_info_hook
 from tgen.futil import file_stream
 from tgen.rnd import rnd
 
-from ratpred.futil import read_data
 from ratpred.predictor import RatingPredictor
 
 
@@ -30,6 +29,9 @@ def train(args):
 
     log_info("Initializing...")
     rp = RatingPredictor(cfg)
+    if args.tensorboard_dir_id is not None:
+        tb_dir, run_id = args.tensorboard_dir_id.split(':', 1)
+        rp.set_tensorboard_logging(tb_dir, run_id)
     log_info("Training...")
     rp.train(args.train_data, valid_data_file=args.valid_data, data_portion=args.training_portion)
     log_info("Saving model to %s..." % args.model_file)
@@ -68,6 +70,8 @@ def main():
                           help='String to use as a random seed', default=None)
     ap_train.add_argument('-v', '--valid-data', type=str,
                           help='Path to validation data file', default=None)
+    ap_train.add_argument('-t', '--tensorboard-dir-id', default=None,
+                          help='Colon-separated path_to_tensorboard_logdir:run_id')
     ap_train.add_argument('config_file', type=str, help='Path to the configuration file')
     ap_train.add_argument('train_data', type=str, help='Path to the training data TSV file')
     ap_train.add_argument('model_file', type=str, help='Path where to store the predictor model')
