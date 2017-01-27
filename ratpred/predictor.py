@@ -73,6 +73,9 @@ class RatingPredictor(TFModel):
 
         self.validation_size = cfg.get('validation_size', 0)
         self.validation_freq = cfg.get('validation_freq', 10)
+        self.validation_weights = cfg.get('validation_weights', {'accuracy': 1.0,
+                                                                 'dist_total': 1.0,
+                                                                 'cost_total': 0.01, })
         self.max_cores = cfg.get('max_cores')
         self.checkpoint = None
 
@@ -188,18 +191,25 @@ class RatingPredictor(TFModel):
                     iter_no > self.min_passes and iter_no % self.validation_freq == 0):
 
                 results = self.evaluate(self.valid_inputs, self.valid_y)
-
-                comb_cost = len(self.valid_inputs) * results['accuracy'] + 100 * results['dist_total'] + pass_cost
-                results['comb_cost'] = comb_cost
+                results['cost_total'] = pass_cost
+                results['cost_avg'] = pass_cost / len(self.train_hyps)
+                self._compute_comb_cost(results)
                 self._print_valid_stats(iter_no, results)
 
                 # if we have the best model so far, save it as a checkpoint (overwrite previous)
-                if math.isnan(top_cost) or comb_cost < top_cost:
-                    top_cost = comb_cost
+                if math.isnan(top_cost) or results['cost_comb'] < top_cost:
+                    top_cost = results['cost_comb']
                     self._save_checkpoint()
 
         # restore last checkpoint (best performance on devel data)
         self.restore_checkpoint()
+
+    def _compute_comb_cost(self, results):
+        """Compute combined cost, given my validation quantity weights."""
+        comb_cost = sum([weight * results[quantity]
+                         for quantity, weight in self.validation_weights.iteritems()])
+        results['cost_comb'] = comb_cost
+        return comb_cost
 
     def rate(self, hyps=None, refs=None, das=None):
         """

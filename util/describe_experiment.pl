@@ -31,6 +31,10 @@ my $config_data = read_file( $ARGV[0] );
 # remove commented-out lines
 $config_data =~ s/^\s*#.*$//gm;
 
+# remove classification filter data so that they do not influence reading other settings
+my $valid_crit_data = ( $config_data =~ /'validation_weights'\s*:\s*{([^}]*)}/s )[0];
+$config_data =~ s/'validation_weights'\s*:\s*{[^}]*}//s;
+
 # data set (devel -- default, eval -- mark)
 if ($eval_data){
     $data_set = "\e[1;31mE\e[0m ";
@@ -52,6 +56,14 @@ if ($config_data =~ /'validation_size'\s*:\s*([0-9]+)\s*,/ and $1 != 0 ){
     $iters .= '@' . ( ( $config_data =~ /'validation_freq'\s*:\s*([0-9]+)\s*,/ )[0] // 10);
     $iters .= ' I' . ( ( $config_data =~ /'improve_interval'\s*:\s*([0-9]+)\s*,/ )[0] // 10);
     $iters .= '@' . ( ( $config_data =~ /'top_k'\s*:\s*([0-9]+)\s*,/ )[0] // 5);
+
+    if ($valid_crit_data){
+        $valid_crit_data =~ s/[\s\r\n:']//g;
+        $valid_crit_data =~ s/([a-z])[a-z]*(?=[^a-z])/$1/g;
+        $valid_crit_data =~ s/_//g;
+        $valid_crit_data =~ s/,$//;
+        $iters .= ' ' . $valid_crit_data;
+    }
 }
 
 # data style
@@ -83,7 +95,6 @@ $nn_shape .= ' +co-t'  if ( $config_data =~ /'predict_coarse'\s*:\s*'train'/ );
 $nn_shape .= ' +co-e'  if ( $config_data =~ /'predict_coarse'\s*:\s*'test'/ );
 $nn_shape .= ' +ints'  if ( $config_data =~ /'predict_ints'\s*:\s*True/ );
 $nn_shape .= ' +adgr'  if ( $config_data =~ /'optimizer_type'\s*:\s*'adagrad'/ );
-
 
 if ($cv) {
     my @cv_runs = split /\s+/, $cv;
