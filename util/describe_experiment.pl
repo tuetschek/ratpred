@@ -72,7 +72,10 @@ if ($portion < 1.0){
 }
 $training_set .= ' -slotn' if ( $config_data =~ /'delex_slot_names'\s*:\s*True/ );
 $training_set .= ' +lex' if ( $config_data !~ /'delex_slots'\s*:\s*'[^']/ );
-$training_data = $training_set . ' -> ' . ( ( $config_data =~ /'target_col'\s*:\s*'([^']*)'/ )[0] // 'quality' );
+my $target_col = ( $config_data =~ /'target_col'\s*:\s*'([^']*)'/ )[0] // 'quality';
+$target_col = substr($target_col, 0, 3);
+$target_col =~ s/qua/qlt/;
+$training_data = $training_set . ' -> ' . $target_col;
 
 
 # gadgets
@@ -87,9 +90,9 @@ $nn_shape .= ' +w2v-s'  if ( $config_data =~ /'word2vec_embs'\s*:\s*'(?!trainabl
 $nn_shape .= ' +w2v-t'  if ( $config_data =~ /'word2vec_embs'\s*:\s*'trainable'/ );
 $nn_shape .= ' +ce'  if ( $config_data =~ /'char_embs'\s*:\s*True/ );
 $nn_shape .= ' +reuse'  if ( $config_data =~ /'reuse_embeddings'\s*:\s*True/ );
-$nn_shape .= ' +da_enc'  if ( $config_data =~ /'da_enc'\s*:\s*True/ );
-$nn_shape .= ' -ref_enc'  if ( $config_data =~ /'ref_enc'\s*:\s*False/ );
-$nn_shape .= ' -hyp_enc'  if ( $config_data =~ /'hyp_enc'\s*:\s*False/ );
+$nn_shape .= ' +da'  if ( $config_data =~ /'da_enc'\s*:\s*True/ );
+$nn_shape .= ' -ref'  if ( $config_data =~ /'ref_enc'\s*:\s*False/ );
+$nn_shape .= ' -hyp'  if ( $config_data =~ /'hyp_enc'\s*:\s*False/ );
 $nn_shape .= ' +1/2s'  if ( $config_data =~ /'predict_halves'\s*:\s*True/ );
 $nn_shape .= ' +co-t'  if ( $config_data =~ /'predict_coarse'\s*:\s*'train'/ );
 $nn_shape .= ' +co-e'  if ( $config_data =~ /'predict_coarse'\s*:\s*'test'/ );
