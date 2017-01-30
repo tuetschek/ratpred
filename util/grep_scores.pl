@@ -45,7 +45,7 @@ while ( my $line = <$fh> ) {
         $pr = rg( 0, $dist_range , $dist, 1 ) . "D $dist/$std\e[0m  ";
     }
     if ( $line =~ /(Accuracy:)/i ) {
-        $line =~ s/.*Accuracy://i;
+        $line =~ s/.*Accuracy: //i;
         $pr .= rg( 0, 1 , $line ) . "A $line\e[0m  ";
     }
     if ( $line =~ /(Pearson|Spearman) correlation:/i ) {
