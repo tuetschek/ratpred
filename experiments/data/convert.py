@@ -49,7 +49,7 @@ def distort_sent(sent, distort_step, vocab):
         # select what to do (random distortion action)
         possible_actions = ['duplicate', 'replace', 'duplicate_rand', 'insert_rand']
         if len(sent) > 1:  # disallow removing the last word
-            possible_action.append('remove')
+            possible_actions.append('remove')
         action = np.random.choice(possible_actions)
 
         if action in ['insert_rand', 'replace']:  # generate random token to insert/replace
