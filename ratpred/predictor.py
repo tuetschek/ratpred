@@ -619,9 +619,10 @@ class RatingPredictor(TFModel):
 
     def _print_valid_stats(self, pass_no, results):
         """Print validation results for the given training pass number."""
-        log_info('Validation distance: %.3f (avg: %.3f), accuracy %.3f, combined cost %.3f' %
+        log_info(('Validation distance: %.3f (avg: %.3f), accuracy %.3f, ' +
+                  'pearson %.3f, combined cost %.3f') %
                  tuple(results[key]
-                       for key in ['dist_total', 'dist_avg', 'accuracy', 'comb_cost']))
+                       for key in ['dist_total', 'dist_avg', 'accuracy', 'pearson', 'cost_comb']))
         self.tb_logger.add_to_log(pass_no, {'valid_' + key: value
                                             for key, value in results.iteritems()})
 
