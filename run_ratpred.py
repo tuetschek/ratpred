@@ -33,7 +33,8 @@ def train(args):
         tb_dir, run_id = args.tensorboard_dir_id.split(':', 1)
         rp.set_tensorboard_logging(tb_dir, run_id)
     log_info("Training...")
-    rp.train(args.train_data, valid_data_file=args.valid_data, data_portion=args.training_portion)
+    rp.train(args.train_data, valid_data_file=args.valid_data,
+             data_portion=args.training_portion, model_fname=args.model_file)
     log_info("Saving model to %s..." % args.model_file)
     rp.save_to_file(args.model_file)
 

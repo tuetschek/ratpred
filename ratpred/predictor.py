@@ -77,7 +77,10 @@ class RatingPredictor(TFModel):
                                                                  'dist_total': 1.0,
                                                                  'cost_total': 0.01, })
         self.max_cores = cfg.get('max_cores')
+        self.disk_store_freq = cfg.get('disk_store_freq', 1000)
         self.checkpoint = None
+        self.checkpoint_pass = -1
+        self.disk_stored_pass = -1
 
         self.target_col = cfg.get('target_col', 'quality')
         self.delex_slots = cfg.get('delex_slots', set())
@@ -96,17 +99,21 @@ class RatingPredictor(TFModel):
     def set_tensorboard_logging(self, log_dir, run_id):
         self.tb_logger = TensorBoardLogger(log_dir, run_id)
 
-    def save_to_file(self, model_fname):
+    def save_to_file(self, model_fname, skip_settings=False):
         """Save the predictor to a file (actually two files, one for configuration and one
         for the TensorFlow graph, which must be stored separately).
 
         @param model_fname: file name (for the configuration file); TF graph will be stored with a \
             different extension
+        @param skip_settings: if True, saving settings is skipped, only the model parameters are \
+            written to disk
         """
-        log_info("Saving classifier to %s..." % model_fname)
-        with file_stream(model_fname, 'wb', encoding=None) as fh:
-            pickle.dump(self.get_all_settings(), fh, protocol=pickle.HIGHEST_PROTOCOL)
+        if not skip_settings:
+            log_info("Saving model settings to %s..." % model_fname)
+            with file_stream(model_fname, 'wb', encoding=None) as fh:
+                pickle.dump(self.get_all_settings(), fh, protocol=pickle.HIGHEST_PROTOCOL)
         tf_session_fname = re.sub(r'(.pickle)?(.gz)?$', '.tfsess', model_fname)
+        log_info("Saving model parameters to %s..." % tf_session_name)
         self.saver.save(self.session, tf_session_fname)
 
     def get_all_settings(self):
@@ -132,7 +139,7 @@ class RatingPredictor(TFModel):
         log_info('Storing in-memory checkpoint...')
         self.checkpoint = (self.get_all_settings(), self.get_model_params())
 
-    def restore_checkpoint(self):
+    def _restore_checkpoint(self):
         if not self.checkpoint:
             return
         log_info('Restoring in-memory checkpoint...')
@@ -166,7 +173,7 @@ class RatingPredictor(TFModel):
                          'text' if self.da_enc == 'token' else 'cambridge',
                          self.delex_slots, self.delex_slot_names)
 
-    def train(self, train_data_file, valid_data_file=None, data_portion=1.0):
+    def train(self, train_data_file, valid_data_file=None, data_portion=1.0, model_fname=None):
         """Run training on the given training data.
         """
         inputs, targets = self.load_data(train_data_file)
@@ -200,9 +207,15 @@ class RatingPredictor(TFModel):
                 if math.isnan(top_cost) or results['cost_comb'] < top_cost:
                     top_cost = results['cost_comb']
                     self._save_checkpoint()
+                    self.checkpoint_pass = iter_no
+
+                    # once in a while, save current best checkpoint to disk
+                    if model_fname and (iter_no - self.disk_stored_pass >= self.disk_store_freq):
+                        self.save_to_file(model_fname, self.disk_stored_pass > 0)
+                        self.disk_stored_pass = iter_no
 
         # restore last checkpoint (best performance on devel data)
-        self.restore_checkpoint()
+        self._restore_checkpoint()
 
     def _compute_comb_cost(self, results):
         """Compute combined cost, given my validation quantity weights."""
