@@ -112,9 +112,8 @@ desc:
 			cat $$file/$(SCOREFILE) ; \
 			continue ; \
 		fi ; \
-		echo -ne $$file ":  " | sed 's/runs\///;s/_/  /;s/_/ /;s/_/  /;s/  20/  /;s/-[0-9][0-9]  /  /;' > $$file/$(SCOREFILE);  \
+		echo -ne $$file | sed 's/runs\///;s/_/  /;s/_/ /;s/_.*/: /;s/  20/  /;s/-[0-9][0-9]  /  /;' > $$file/$(SCOREFILE);  \
 		$(GREP_SCORES) $(LOGFILES) >> $$file/$(SCOREFILE) ; \
-		echo -ne '    ' >> $$file/$(SCOREFILE) ; \
 		cat $$file/ABOUT | tr  '\n' ' ' >> $$file/$(SCOREFILE); \
 		echo >> $$file/$(SCOREFILE); \
 		cat $$file/$(SCOREFILE); \
