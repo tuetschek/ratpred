@@ -113,7 +113,7 @@ class RatingPredictor(TFModel):
             with file_stream(model_fname, 'wb', encoding=None) as fh:
                 pickle.dump(self.get_all_settings(), fh, protocol=pickle.HIGHEST_PROTOCOL)
         tf_session_fname = re.sub(r'(.pickle)?(.gz)?$', '.tfsess', model_fname)
-        log_info("Saving model parameters to %s..." % tf_session_name)
+        log_info("Saving model parameters to %s..." % tf_session_fname)
         self.saver.save(self.session, tf_session_fname)
 
     def get_all_settings(self):
