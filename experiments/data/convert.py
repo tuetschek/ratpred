@@ -92,14 +92,15 @@ def build_vocab(freq_dict):
     return vocab_toks, np.array(vocab_ps)
 
 
-def create_fake_data(real_data):
+def create_fake_data(real_data, columns):
     """Given some real data, create additional fake data, using human references and
     distorting them.
     @param real_data: a real data set, as pd.DataFrame
-    @return: a fake data set, as pd.DataFrame with the same columns
+    @param columns: list of columns for the fake data set
+    @return: a fake data set, with the given columns, some of them empty
     """
 
-    fake_data = pd.DataFrame(index=np.arange(len(real_data) * 5), columns=real_data.columns)
+    fake_data = pd.DataFrame(index=np.arange(len(real_data) * 5), columns=columns)
     vocab = {}
 
     # add references as perfect data items
@@ -178,7 +179,7 @@ def convert(args):
         else:
             log_info("Creating fake data...")
             fake_data_refs = data.groupby(['mr', 'orig_ref'], as_index=False).agg(lambda vals: None)
-        fake_data = create_fake_data(fake_data_refs)
+        fake_data = create_fake_data(fake_data_refs, data.columns)
         log_info("Created %d fake instances." % len(fake_data))
     else:
         fake_data = pd.DataFrame(columns=data.columns)
