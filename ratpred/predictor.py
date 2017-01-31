@@ -66,6 +66,8 @@ class RatingPredictor(TFModel):
 
         self.passes = cfg.get('passes', 200)
         self.min_passes = cfg.get('min_passes', 0)
+        self.pretrain_passes = cfg.get('pretrain_passes', self.passes)
+
         self.alpha = cfg.get('alpha', 0.1)
         self.randomize = cfg.get('randomize', True)
         self.batch_size = cfg.get('batch_size', 1)
@@ -77,7 +79,8 @@ class RatingPredictor(TFModel):
                                                                  'dist_total': 1.0,
                                                                  'cost_total': 0.01, })
         self.max_cores = cfg.get('max_cores')
-        self.disk_store_freq = cfg.get('disk_store_freq', 1000)
+        self.disk_store_freq = cfg.get('disk_store_freq', self.passes)
+        self.disk_store_min_pass = cfg.get('disk_store_min_pass', self.passes)
         self.checkpoint = None
         self.checkpoint_pass = -1
         self.disk_stored_pass = -1
@@ -210,12 +213,29 @@ class RatingPredictor(TFModel):
                     self.checkpoint_pass = iter_no
 
                     # once in a while, save current best checkpoint to disk
-                    if model_fname and (iter_no - self.disk_stored_pass >= self.disk_store_freq):
+                    if (model_fname and
+                            (iter_no > self.disk_store_min_pass) and
+                            (iter_no - self.disk_stored_pass >= self.disk_store_freq)):
                         self.save_to_file(model_fname, self.disk_stored_pass > 0)
                         self.disk_stored_pass = iter_no
 
+            if iter_no == self.pretrain_passes:  # continue training only on real data
+                self._remove_fake_training_data()
+
         # restore last checkpoint (best performance on devel data)
         self._restore_checkpoint()
+
+    def _remove_fake_training_data(self):
+        """Remove 'fake' training data from the list of training instances, based on the
+        self.train_is_reals variable."""
+
+        def filter_real(data):
+            return [inst for inst, ir in zip(data, self.train_is_reals) if ir]
+
+        self.train_das = filter_real(self.train_das)
+        self.train_hyps = filter_real(self.train_hyps)
+        self.train_refs = filter_real(self.train_refs)
+        self.train_is_reals = filter_real(self.train_is_reals)  # basically set all to 1
 
     def _compute_comb_cost(self, results):
         """Compute combined cost, given my validation quantity weights."""
@@ -254,11 +274,23 @@ class RatingPredictor(TFModel):
             # just squeeze the output float value into our range
             return np.clip(val, self.outputs_range_lo, self.outputs_range_hi)
 
-    def _divide_inputs(self, inputs, trunc_size=None):
+    def _divide_inputs(self, inputs, trunc_size=None, get_is_real=False):
+        """Divide different types of input data (DAs, references, system outputs, real data
+        indicators) into separate lists.
+
+        @param inputs: the input data (as one list of tuples)
+        @param trunc_size: truncate the data to the given size (do nothing if `None`)
+        @param get_is_real: return the `is_real` indicators as well
+        @return: the input data, as tuple of lists (three or four-tuple, based on `get_is_real`)
+        """
         size = trunc_size if trunc_size is not None else len(inputs)
-        return ([da for da, _, _ in inputs[:size]],
-                [ref for _, ref, _ in inputs[:size]],
-                [hyp for _, _, hyp in inputs[:size]])
+        das = [inp[0] for inp in inputs[:size]]
+        refs = [inp[1] for inp in inputs[:size]]
+        hyps = [inp[2] for inp in inputs[:size]]
+        if get_is_real:
+            irs = [inp[3] for inp in inputs[:size]]
+            return (das, refs, hyps, irs)
+        return (das, refs, hyps)
 
     def _cut_valid_data(self):
         self.valid_inputs = (self.train_das[-self.validation_size:],
@@ -269,6 +301,7 @@ class RatingPredictor(TFModel):
         self.train_das = self.train_das[:-self.validation_size]
         self.train_refs = self.train_refs[:-self.validation_size]
         self.train_hyps = self.train_hyps[:-self.validation_size]
+        self.train_is_reals = self.train_is_reals[:-self.validation_size]
 
     def _init_training(self, inputs, targets,
                        valid_inputs=None, valid_targets=None, data_portion=1.0):
@@ -278,7 +311,8 @@ class RatingPredictor(TFModel):
         """
         # store training data, make it smaller if necessary
         train_size = int(round(data_portion * len(inputs)))
-        self.train_das, self.train_refs, self.train_hyps = self._divide_inputs(inputs, train_size)
+        self.train_das, self.train_refs, self.train_hyps, self.train_is_reals = (
+            self._divide_inputs(inputs, train_size, get_is_real=True))
         self.y = targets[:train_size]
 
         self.valid_inputs, self.valid_y = None, None
@@ -644,7 +678,7 @@ class RatingPredictor(TFModel):
         Evaluate the predictor on the given inputs & targets; possibly also write to a file.
         """
         if isinstance(inputs, tuple):
-            das, input_refs, input_hyps = inputs
+            das, input_refs, input_hyps = inputs[:3]  # ignore is_real indicators
         else:
             das, input_refs, input_hyps = self._divide_inputs(inputs)
         dists = []

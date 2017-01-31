@@ -36,16 +36,23 @@ def read_data(filename, target_col, das_type='cambridge', delex_slots=set(), del
     texts_hyp = [[(tok, None) for tok in preprocess_sent(da, sent)]
                  for da, sent in zip(das, data['system_ref'])]
 
-    inputs = [(da, ref, hyp) for da, ref, hyp in zip(das, texts_ref, texts_hyp)]
+    if 'is_real' in data.columns:
+        real_indics = [0 if indic == 0 else 1 for indic in data['is_real']]
+    else:
+        real_indics = [1 for _ in xrange(len(data))]
+
+    inputs = [(da, ref, hyp, ri)
+              for da, ref, hyp, ri in zip(das, texts_ref, texts_hyp, real_indics)]
+
     targets = data[target_col]
 
     return inputs, targets
 
 
 def write_outputs(filename, inputs, raw_targets, targets, raw_outputs, outputs):
-    das = [da for da, _, _ in inputs]
-    input_refs = [" ".join([tok for tok, _ in input_ref]) for _, input_ref, _ in inputs]
-    input_hyps = [" ".join([tok for tok, _ in input_hyp]) for _, _, input_hyp in inputs]
+    das = [inp[0] for inp in inputs]
+    input_refs = [" ".join([tok for tok, _ in inp[1]]) for inp in inputs]
+    input_hyps = [" ".join([tok for tok, _ in inp[2]]) for inp in inputs]
     outputs = [float(output) for output in outputs]
     df = pd.DataFrame({'mr': das,
                        'orig_ref': input_refs,
