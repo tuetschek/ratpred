@@ -234,6 +234,7 @@ class RatingPredictor(TFModel):
         self.train_das = filter_real(self.train_das)
         self.train_hyps = filter_real(self.train_hyps)
         self.train_refs = filter_real(self.train_refs)
+        self.y = np.array(filter_real(self.y))
         self.train_is_reals = filter_real(self.train_is_reals)  # basically set all to 1
 
     def _compute_comb_cost(self, results):
