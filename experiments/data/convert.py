@@ -92,15 +92,20 @@ def build_vocab(freq_dict):
     return vocab_toks, np.array(vocab_ps)
 
 
-def create_fake_data(real_data, columns):
+def create_fake_data(real_data, columns, score_type='nlg'):
     """Given some real data, create additional fake data, using human references and
     distorting them.
     @param real_data: a real data set, as pd.DataFrame
     @param columns: list of columns for the fake data set
     @return: a fake data set, with the given columns, some of them empty
     """
+    scale = [6., 4., 3., 2., 1.]  # default, for NLG
+    normalize = False
+    if score_type == 'hter':
+        scale = [0., 1., 2., 3., 4., 5.]
+        normalize = True
 
-    fake_data = pd.DataFrame(index=np.arange(len(real_data) * 5), columns=columns)
+    fake_data = pd.DataFrame(index=np.arange(len(real_data) * len(scale)), columns=columns)
     vocab = {}
 
     # add references as perfect data items
@@ -110,7 +115,7 @@ def create_fake_data(real_data, columns):
         fake_data.loc[idx]['mr'] = row.mr
         fake_data.loc[idx]['is_real'] = 0
         for quant in ['naturalness', 'quality', 'informativeness']:
-            fake_data.loc[idx][quant] = 6.0
+            fake_data.loc[idx][quant] = scale[0]  # NB: works because scale[0] for HTER is 0.
 
         for tok in tokenize(row.orig_ref).split(' '):
             vocab[tok] = vocab.get(tok, 0) + 1
@@ -118,7 +123,7 @@ def create_fake_data(real_data, columns):
     lexicalizer = Lexicalizer(cfg={'mode': 'tokens'})  # default lexicalizer
     vocab = build_vocab(vocab)
 
-    for distort_step in xrange(1, 5):
+    for distort_step, target_score in enumerate(scale[1:], start=1):
         for idx, row in enumerate(real_data.itertuples(), start=distort_step * len(real_data)):
 
             fake_data.loc[idx]['orig_ref'] = row.orig_ref
@@ -128,6 +133,7 @@ def create_fake_data(real_data, columns):
             # delexicalize data
             da = DA.parse_cambridge_da(row.mr)
             sent, _, lex_instr = delex_sent(da, tokenize(row.orig_ref).split(' '), DELEX_SLOTS)
+            ref_len = len(sent)
             # distort
             sent = distort_sent(sent, distort_step, vocab)
             # lexicalize again
@@ -135,7 +141,9 @@ def create_fake_data(real_data, columns):
             fake_data.loc[idx]['system_ref'] = ' '.join(sent)
 
             for quant in ['naturalness', 'quality', 'informativeness']:
-                fake_data.loc[idx][quant] = 5.0 - distort_step
+                fake_data.loc[idx][quant] = (((target_score / ref_len) * 100)
+                                             if normalize
+                                             else target_score)
 
     return fake_data
 
@@ -164,11 +172,14 @@ def convert(args):
     """
 
     log_info("Loading %s..." % args.input_file)
-    data = pd.read_csv(args.input_file, index_col=None)
+    data = pd.read_csv(args.input_file, index_col=None,
+                       sep=(b"\t" if args.input_file.endswith('.tsv') else b","),
+                       encoding='utf-8')
     log_info("Contains %d instances." % len(data))
 
     # add dummy judge ids so that pandas does not drop stuff when groupping :-(
-    data['judge_id'] = data['judge_id'].apply(lambda x: x if not np.isnan(x) else -1)
+    if 'judge_id' in data.columns:
+        data['judge_id'] = data['judge_id'].apply(lambda x: x if not np.isnan(x) else -1)
     # mark data as being "real" (as opposed to added fake data)
     data['is_real'] = pd.Series(np.ones(len(data), dtype=np.int32), index=data.index)
 
@@ -179,7 +190,8 @@ def convert(args):
         else:
             log_info("Creating fake data...")
             fake_data_refs = data.groupby(['mr', 'orig_ref'], as_index=False).agg(lambda vals: None)
-        fake_data = create_fake_data(fake_data_refs, data.columns)
+        fake_data = create_fake_data(fake_data_refs, data.columns,
+                                     score_type=('hter' if args.hter_score else 'nlg'))
         log_info("Created %d fake instances." % len(fake_data))
     else:
         fake_data = pd.DataFrame(columns=data.columns)
@@ -246,7 +258,8 @@ def convert(args):
     for label, part in zip(labels, parts):
         # write the output
         log_info("Writing part %s (size %d)..." % (label, len(part)))
-        part.to_csv(os.path.join(args.output_dir, label + '.tsv'), sep=b"\t", index=False)
+        part.to_csv(os.path.join(args.output_dir, label + '.tsv'),
+                    sep=b"\t", index=False, encoding='utf-8')
     log_info("Done.")
 
 
@@ -275,6 +288,8 @@ if __name__ == '__main__':
                     action='store', default=None, const='', nargs='?',
                     help='Adding fake data (no value: from MRs + references in normal data, ' +
                     'value: from MRs + references in additional file)')
+    ap.add_argument('-H', '--hter-score', action='store_true',
+                    help='Use HTER score when generating the fake data, instead of NLG scores')
     ap.add_argument('input_file', type=str, help='Path to the input file')
     ap.add_argument('output_dir', type=str,
                     help='Output directory (where train,devel,test TSV will be created)')

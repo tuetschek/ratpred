@@ -228,7 +228,6 @@ class RatingPredictor(TFModel):
     def _remove_fake_training_data(self):
         """Remove 'fake' training data from the list of training instances, based on the
         self.train_is_reals variable."""
-
         def filter_real(data):
             return [inst for inst, ir in zip(data, self.train_is_reals) if ir]
 
