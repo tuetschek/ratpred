@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -"- coding: utf-8 -"-
 
+from __future__ import unicode_literals
+
 import pandas as pd
 import codecs
 from argparse import ArgumentParser
