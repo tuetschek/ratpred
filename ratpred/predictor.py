@@ -118,6 +118,7 @@ class RatingPredictor(TFModel):
         tf_session_fname = re.sub(r'(.pickle)?(.gz)?$', '.tfsess', model_fname)
         log_info("Saving model parameters to %s..." % tf_session_fname)
         self.saver.save(self.session, tf_session_fname)
+        log_info('Done.')
 
     def get_all_settings(self):
         """Get all settings except the trained model parameters (to be stored in a pickle)."""
@@ -141,6 +142,7 @@ class RatingPredictor(TFModel):
         Will always overwrite the last checkpoint."""
         log_info('Storing in-memory checkpoint...')
         self.checkpoint = (self.get_all_settings(), self.get_model_params())
+        log_info('Done.')
 
     def _restore_checkpoint(self):
         if not self.checkpoint:
@@ -231,11 +233,19 @@ class RatingPredictor(TFModel):
         def filter_real(data):
             return [inst for inst, ir in zip(data, self.train_is_reals) if ir]
 
-        self.train_das = filter_real(self.train_das)
-        self.train_hyps = filter_real(self.train_hyps)
-        self.train_refs = filter_real(self.train_refs)
+        if self.hyp_enc:
+            self.train_hyps = filter_real(self.train_hyps)
+            self.X_hyp = np.array(filter_real(self.X_hyp))
+        if self.ref_enc:
+            self.train_refs = filter_real(self.train_refs)
+            self.X_ref = np.array(filter_real(self.X_ref))
+        if self.da_enc:
+            self.train_das = filter_real(self.train_das)
+            self.X_da = np.array(filter_real(self.X_da))
+
         self.y = np.array(filter_real(self.y))
         self.train_is_reals = filter_real(self.train_is_reals)  # basically set all to 1
+        log_info("Removed fake training data, %d instances remaining." % len(self.y))
 
     def _compute_comb_cost(self, results):
         """Compute combined cost, given my validation quantity weights."""
