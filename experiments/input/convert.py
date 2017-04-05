@@ -94,13 +94,12 @@ def build_vocab(freq_dict):
     return vocab_toks, np.array(vocab_ps)
 
 
-def create_fake_data(real_data, columns, score_type='nlg', use_data_scores=False):
+def create_fake_data(real_data, columns, score_type='nlg'):
     """Given some real data, create additional fake data, using human references and
-    distorting them.
+    distorting them. Will start from scores provided, or default to best possible score.
     @param real_data: a real data set, as pd.DataFrame
     @param columns: list of columns for the fake data set
     @param score_type: switch between Likert scale 1-6 ('nlg') and HTER ('hter')
-    @param use_data_scores: use genuine data scores, if available
     @return: a fake data set, with the given columns, some of them empty
     """
     def target_score(src_score, distort_step):
