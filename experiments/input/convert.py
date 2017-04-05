@@ -94,20 +94,29 @@ def build_vocab(freq_dict):
     return vocab_toks, np.array(vocab_ps)
 
 
-def create_fake_data(real_data, columns, score_type='nlg'):
+def create_fake_data(real_data, columns, score_type='nlg', use_data_scores=False):
     """Given some real data, create additional fake data, using human references and
     distorting them.
     @param real_data: a real data set, as pd.DataFrame
     @param columns: list of columns for the fake data set
+    @param score_type: switch between Likert scale 1-6 ('nlg') and HTER ('hter')
+    @param use_data_scores: use genuine data scores, if available
     @return: a fake data set, with the given columns, some of them empty
     """
-    scale = [6., 4., 3., 2., 1.]  # default, for NLG
-    normalize = False
-    if score_type == 'hter':
-        scale = [0., 1., 2., 3., 4., 5.]
-        normalize = True
+    def target_score(src_score, distort_step):
+        if score_type == 'hter':
+            return src_score + distort_step
+        return max(1, min(4., src_score - distort_step))
 
-    fake_data = pd.DataFrame(index=np.arange(len(real_data) * len(scale)), columns=columns)
+    normalize = False
+    best_score = 6.
+    num_steps = 4
+    if score_type == 'hter':
+        normalize = True
+        best_score = 0.
+        num_steps = 5
+
+    fake_data = pd.DataFrame(index=np.arange(len(real_data) * (num_steps + 1)), columns=columns)
     vocab = {}
 
     # add references as perfect data items
@@ -117,7 +126,9 @@ def create_fake_data(real_data, columns, score_type='nlg'):
         fake_data.loc[idx]['mr'] = row.mr
         fake_data.loc[idx]['is_real'] = 0
         for quant in ['naturalness', 'quality', 'informativeness']:
-            fake_data.loc[idx][quant] = scale[0]  # NB: works because scale[0] for HTER is 0.
+            fake_data.loc[idx][quant] = (getattr(row, quant)
+                                         if hasattr(row, quant) and not np.isnan(getattr(row, quant))
+                                         else best_score)
 
         for tok in tokenize(row.orig_ref).split(' '):
             vocab[tok] = vocab.get(tok, 0) + 1
@@ -125,7 +136,7 @@ def create_fake_data(real_data, columns, score_type='nlg'):
     lexicalizer = Lexicalizer(cfg={'mode': 'tokens'})  # default lexicalizer
     vocab = build_vocab(vocab)
 
-    for distort_step, target_score in enumerate(scale[1:], start=1):
+    for distort_step in xrange(1, num_steps + 1):
         for idx, row in enumerate(real_data.itertuples(), start=distort_step * len(real_data)):
 
             fake_data.loc[idx]['orig_ref'] = row.orig_ref
@@ -143,9 +154,11 @@ def create_fake_data(real_data, columns, score_type='nlg'):
             fake_data.loc[idx]['system_ref'] = ' '.join(sent)
 
             for quant in ['naturalness', 'quality', 'informativeness']:
-                fake_data.loc[idx][quant] = (((target_score / ref_len) * 100)
-                                             if normalize
-                                             else target_score)
+                score = (getattr(row, quant)
+                         if hasattr(row, quant) and not np.isnan(getattr(row, quant))
+                         else best_score)
+                score = target_score(score, distort_step)
+                fake_data.loc[idx][quant] = (((score / ref_len) * 100) if normalize else score)
 
     return fake_data
 
@@ -191,11 +204,17 @@ def convert(args):
         fake_data_refs = pd.concat((fake_data_refs,
                                     pd.read_csv(args.create_fake_data_from,
                                                 index_col=None, sep=b"\t")))
-    if args.create_fake_data:
+    if 'H' in args.create_fake_data:
         log_info("Creating fake data from human refs in training data...")
         fake_data_refs = pd.concat((fake_data_refs,
-                                   data.groupby(['mr', 'orig_ref'],
-                                                as_index=False).agg(lambda vals: None)))
+                                    data.groupby(['mr', 'orig_ref'],  # delete scores
+                                                 as_index=False).agg(lambda vals: None)))
+    if 'S' in args.create_fake_data:
+        log_info("Creating fake data from system outputs in training data...")
+        sys_outs = data.groupby(['mr', 'system_ref'], as_index=False).median()  # keep scores
+        sys_outs = sys_outs.rename(columns={'system_ref': 'orig_ref'})  # fake orig references
+        fake_data_refs = pd.concat((fake_data_refs, sys_outs))
+
     if len(fake_data_refs):
         fake_data = create_fake_data(fake_data_refs, data.columns,
                                      score_type=('hter' if args.hter_score else 'nlg'))
@@ -298,8 +317,9 @@ if __name__ == '__main__':
                     'there are in the data split ratio)?')
     ap.add_argument('-F', '--create-fake-data-from', type=str,
                     help='Adding fake data from MRs + references in an additional file')
-    ap.add_argument('-f', '--create-fake-data', action='store_true',
-                    help='Adding fake data from MRs + references in normal data')
+    ap.add_argument('-f', '--create-fake-data', type=str, default='',
+                    help='Adding fake data from MRs + references in training data. ' +
+                    '(values: H/S/HS, where H = human refs, S = system outputs)')
     ap.add_argument('-H', '--hter-score', action='store_true',
                     help='Use HTER score when generating the fake data, instead of NLG scores')
     ap.add_argument('input_file', type=str, help='Path to the input file')
