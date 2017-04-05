@@ -185,18 +185,24 @@ def convert(args):
     # mark data as being "real" (as opposed to added fake data)
     data['is_real'] = pd.Series(np.ones(len(data), dtype=np.int32), index=data.index)
 
-    if args.create_fake_data is not None:
-        if args.create_fake_data != '':
-            log_info("Creating fake data from %s..." % args.create_fake_data)
-            fake_data_refs = pd.read_csv(args.create_fake_data, index_col=None, sep=b"\t")
-        else:
-            log_info("Creating fake data...")
-            fake_data_refs = data.groupby(['mr', 'orig_ref'], as_index=False).agg(lambda vals: None)
+    fake_data_refs = pd.DataFrame(columns=['mr', 'orig_ref'])
+    if args.create_fake_data_from:
+        log_info("Creating fake data from %s..." % args.create_fake_data)
+        fake_data_refs = pd.concat((fake_data_refs,
+                                    pd.read_csv(args.create_fake_data_from,
+                                                index_col=None, sep=b"\t")))
+    if args.create_fake_data:
+        log_info("Creating fake data from human refs in training data...")
+        fake_data_refs = pd.concat((fake_data_refs,
+                                   data.groupby(['mr', 'orig_ref'],
+                                                as_index=False).agg(lambda vals: None)))
+    if len(fake_data_refs):
         fake_data = create_fake_data(fake_data_refs, data.columns,
                                      score_type=('hter' if args.hter_score else 'nlg'))
         log_info("Created %d fake instances." % len(fake_data))
     else:
         fake_data = pd.DataFrame(columns=data.columns)
+
     if args.delete_refs:
         log_info("Deleting human references...")
         group_cols = list(set(data.columns) - set(['orig_ref']))
@@ -290,10 +296,10 @@ if __name__ == '__main__':
     ap.add_argument('-v', '--cv', action='store_true',
                     help='Create cross-validation files (as many parts as ' +
                     'there are in the data split ratio)?')
-    ap.add_argument('-f', '--create-fake-data', type=str,
-                    action='store', default=None, const='', nargs='?',
-                    help='Adding fake data (no value: from MRs + references in normal data, ' +
-                    'value: from MRs + references in additional file)')
+    ap.add_argument('-F', '--create-fake-data-from', type=str,
+                    help='Adding fake data from MRs + references in an additional file')
+    ap.add_argument('-f', '--create-fake-data', action='store_true',
+                    help='Adding fake data from MRs + references in normal data')
     ap.add_argument('-H', '--hter-score', action='store_true',
                     help='Use HTER score when generating the fake data, instead of NLG scores')
     ap.add_argument('input_file', type=str, help='Path to the input file')
