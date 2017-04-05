@@ -7,11 +7,13 @@ import pandas as pd
 import numpy as np
 import os.path
 import re
+import codecs
+import pprint
 from argparse import ArgumentParser
 
 from tgen.data import DA
 from tgen.delex import delex_sent
-from tgen.futil import tokenize
+from futil.tokenize import tokenize
 from tgen.logf import log_info
 from tgen.lexicalize import Lexicalizer
 
@@ -254,6 +256,10 @@ def convert(args):
     if not os.path.isdir(args.output_dir):
         log_info("Directory %s not found, creating..." % args.output_dir)
         os.mkdir(args.output_dir)
+
+    # mark down the configuration
+    with codecs.open(os.path.join(args.output_dir, 'config'), 'wb', encoding='UTF-8') as fh:
+        fh.write(pprint.pformat(vars(args), indent=4, width=100))
 
     for label, part in zip(labels, parts):
         # write the output
