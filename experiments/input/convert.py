@@ -264,7 +264,7 @@ def convert(args):
 
 
 if __name__ == '__main__':
-    ap = ArgumentParser()
+    ap = ArgumentParser(description='Prepare and split data for the rating prediction experiment.')
     ap.add_argument('-d', '--devtest-crit', type=str, default=None,
                     help='A criterion (column=val) for selecting devel/test examples')
     ap.add_argument('-a', '--add-valid', type=int, default=0,

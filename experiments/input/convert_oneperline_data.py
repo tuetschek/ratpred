@@ -39,7 +39,7 @@ def convert(args):
 
 
 if __name__ == '__main__':
-    ap = ArgumentParser()
+    ap = ArgumentParser(description='Convert multiple one-per-line files into our TSV format.')
     ap.add_argument('-d', '--das', action='store_true',
                     help='Treat sources as Alex-style DAs, store Cambridge-style DAs' +
                     'on the output')

@@ -43,7 +43,7 @@ def convert(args):
 
 
 if __name__ == '__main__':
-    ap = ArgumentParser()
+    ap = ArgumentParser(description='Convert INLG2016 data into our TSV format.')
     ap.add_argument('src_file', type=str, help='Path to source data file')
     ap.add_argument('out_file', type=str, help='Output TSV file')
 
