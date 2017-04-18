@@ -173,12 +173,16 @@ def get_data_parts(data, sizes):
     sizes = [int(round((part / float(total_parts)) * len(data))) for part in sizes]
     # 1st part takes the rounding error
     sizes[0] += len(data) - sum(sizes)
-    # enlarge 1st part so that there is no overlap in instances with identical (mr, system_ref)
-    while (sizes[0] < len(data) and
-           all(data.ix[sizes[0] - 1, ['mr', 'system_ref']] ==
-               data.ix[sizes[0], ['mr', 'system_ref']])):
-        sizes[0] += 1
-        sizes[1] -= 1
+    # make sure that there is no overlap in instances with identical (mr, system_ref)
+    # this makes the set sizes not exactly equal, but should be OK
+    offset = 0
+    for i in xrange(len(sizes) - 1):
+        while (sizes[i] < len(data) and
+               all(data.ix[sizes[i] - 1, ['mr', 'system_ref']] ==
+                   data.ix[sizes[i], ['mr', 'system_ref']])):
+            sizes[i] += 1
+            sizes[i + 1] -= 1
+        offset += sizes[i]
     offset = 0
     for size in sizes:
         part = data.iloc[offset:offset + size, :]
