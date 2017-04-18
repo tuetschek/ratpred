@@ -171,7 +171,14 @@ def get_data_parts(data, sizes):
     parts = []
     total_parts = sum(sizes)
     sizes = [int(round((part / float(total_parts)) * len(data))) for part in sizes]
-    sizes[0] += len(data) - sum(sizes)  # 1st part takes the rounding error
+    # 1st part takes the rounding error
+    sizes[0] += len(data) - sum(sizes)
+    # enlarge 1st part so that there is no overlap in instances with identical (mr, system_ref)
+    while (sizes[0] < len(data) and
+           all(data.ix[sizes[0] - 1, ['mr', 'system_ref']] ==
+               data.ix[sizes[0], ['mr', 'system_ref']])):
+        sizes[0] += 1
+        sizes[1] -= 1
     offset = 0
     for size in sizes:
         part = data.iloc[offset:offset + size, :]
@@ -235,10 +242,16 @@ def convert(args):
         log_info("Concatenating all references for the same outputs...")
         group_cols = list(set(data.columns) - set(['orig_ref']))
         data = data.groupby(group_cols, as_index=False).agg(lambda vals: ' <|> '.join(vals))
+
+    # shuffle, but keep identical instances (just with different human refs) together
     if args.shuffle:
         log_info("Shuffling...")
-        data = data.iloc[np.random.permutation(len(data))]
-        data.reset_index(drop=True)
+        # set index for grouping (DAs should be disjunct across sets, so this should suffice)
+        data = data.set_index(['mr', 'system_ref'])
+        # do the actual shuffling over the new index
+        data = data.loc[[tuple(p) for p in np.random.permutation(list(set(data.index)))]]
+        # merge the index back into the dataset
+        data = data.reset_index()
     sizes = [int(part) for part in args.ratio.split(':')]
     labels = args.labels.split(':')
 
@@ -267,7 +280,7 @@ def convert(args):
         for offset in xrange(len(sizes)):
             os.mkdir(os.path.join(args.output_dir, 'cv%02d' % offset))
             cur_parts = parts[offset:] + parts[:offset]
-            cur_parts[0] = pd.concat([fake_data, cur_parts[0]])  # add fake data
+            cur_parts[0] = pd.concat([fake_data, cur_parts[0]])  # add fake data to training part
             for cv_size, cv_label in zip(cv_sizes, labels):
                 cv_parts.append(pd.concat(cur_parts[:cv_size]))
                 cur_parts = cur_parts[cv_size:]
