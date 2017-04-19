@@ -126,7 +126,9 @@ def create_fake_data(real_data, columns, score_type='nlg'):
         fake_data.loc[idx]['is_real'] = 0
         for quant in ['naturalness', 'quality', 'informativeness']:
             fake_data.loc[idx][quant] = (getattr(row, quant)
-                                         if hasattr(row, quant) and not np.isnan(getattr(row, quant))
+                                         if (hasattr(row, quant) and
+                                             getattr(row, quant) is not None and
+                                             not np.isnan(getattr(row, quant)))
                                          else best_score)
 
         for tok in tokenize(row.orig_ref).split(' '):
@@ -154,7 +156,9 @@ def create_fake_data(real_data, columns, score_type='nlg'):
 
             for quant in ['naturalness', 'quality', 'informativeness']:
                 score = (getattr(row, quant)
-                         if hasattr(row, quant) and not np.isnan(getattr(row, quant))
+                         if (hasattr(row, quant) and
+                             getattr(row, quant) is not None and
+                             not np.isnan(getattr(row, quant)))
                          else best_score)
                 score = target_score(score, distort_step)
                 fake_data.loc[idx][quant] = (((score / ref_len) * 100) if normalize else score)
@@ -210,7 +214,7 @@ def convert(args):
 
     fake_data_refs = pd.DataFrame(columns=['mr', 'orig_ref'])
     if args.create_fake_data_from:
-        log_info("Creating fake data from %s..." % args.create_fake_data)
+        log_info("Creating fake data from %s..." % args.create_fake_data_from)
         fake_data_refs = pd.concat((fake_data_refs,
                                     pd.read_csv(args.create_fake_data_from,
                                                 index_col=None, sep=b"\t")))
@@ -263,7 +267,9 @@ def convert(args):
         # select dev/test data based on a criterion
         crit_col, crit_val = args.devtest_crit.split('=')
         train_part = data[data[crit_col] != crit_val]  # training data is everything else
+        train_part = train_part.reset_index()
         data = data[data[crit_col] == crit_val]  # dev+test data have the criterion
+        data = data.reset_index()
         sizes = sizes[1:]  # training size does not matter (everything not fulfilling the criterion)
         if args.add_valid:  # add a few validation examples into training data
             train_part = pd.concat((train_part, data[0:args.add_valid]))
