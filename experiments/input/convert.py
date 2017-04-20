@@ -195,6 +195,27 @@ def get_data_parts(data, sizes):
     return parts
 
 
+def add_fake_data(train_data, real_data, add_from_train=False):
+    if add_from_train:
+        log_info("Will create fake data from system outputs in training data.")
+        # we keep the scores here, but use the outputs as orig references
+        sys_outs = train_data.copy()
+        del sys_outs['orig_ref']  # delete original human refs first
+        sys_outs = sys_outs.rename(columns={'system_ref': 'orig_ref'})
+        real_data = pd.concat((real_data, sys_outs))
+
+    # there is some fake data to be created and added
+    if len(real_data):
+        log_info("Creating fake data...")
+        fake_data = create_fake_data(real_data, train_data.columns,
+                                     score_type=('hter' if args.hter_score else 'nlg'))
+        log_info("Created %d fake instances." % len(fake_data))
+        return pd.concat([fake_data, train_data])
+
+    # no fake data to be added -> return just the original
+    return train_data
+
+
 def convert(args):
     """Main function, does the conversion, taking parsed command-line arguments.
     @param args: command-line arguments
@@ -214,33 +235,22 @@ def convert(args):
 
     fake_data_refs = pd.DataFrame(columns=['mr', 'orig_ref'])
     if args.create_fake_data_from:
-        log_info("Creating fake data from %s..." % args.create_fake_data_from)
+        log_info("Will create fake data from %s." % args.create_fake_data_from)
         fake_data_refs = pd.concat((fake_data_refs,
                                     pd.read_csv(args.create_fake_data_from,
                                                 index_col=None, sep=b"\t")))
     if 'H' in args.create_fake_data:
-        log_info("Creating fake data from human refs in training data...")
+        log_info("Will create fake data from human refs in all data.")
         fake_data_refs = pd.concat((fake_data_refs,
                                     data.groupby(['mr', 'orig_ref'],  # delete scores
                                                  as_index=False).agg(lambda vals: None)))
-    if 'S' in args.create_fake_data:
-        log_info("Creating fake data from system outputs in training data...")
-        sys_outs = data.groupby(['mr', 'system_ref'], as_index=False).median()  # keep scores
-        sys_outs = sys_outs.rename(columns={'system_ref': 'orig_ref'})  # fake orig references
-        fake_data_refs = pd.concat((fake_data_refs, sys_outs))
-
-    if len(fake_data_refs):
-        fake_data = create_fake_data(fake_data_refs, data.columns,
-                                     score_type=('hter' if args.hter_score else 'nlg'))
-        log_info("Created %d fake instances." % len(fake_data))
-    else:
-        fake_data = pd.DataFrame(columns=data.columns)
 
     if args.delete_refs:
         log_info("Deleting human references...")
         group_cols = list(set(data.columns) - set(['orig_ref']))
         data = data.groupby(group_cols, as_index=False).agg(lambda vals: "")
-        fake_data['orig_ref'] = fake_data['orig_ref'].apply(lambda vals: "")
+        # TODO what?? fake_data['orig_ref'] = fake_data['orig_ref'].apply(lambda vals: "")
+
     if args.median:
         log_info("Computing medians...")
         group_cols = list(set(data.columns) - set(['informativeness', 'naturalness',
@@ -290,7 +300,7 @@ def convert(args):
         for offset in xrange(len(sizes)):
             os.mkdir(os.path.join(args.output_dir, 'cv%02d' % offset))
             cur_parts = parts[offset:] + parts[:offset]
-            cur_parts[0] = pd.concat([fake_data, cur_parts[0]])  # add fake data to training part
+            cur_parts[0] = add_fake_data(cur_parts[0], fake_data_refs, 'S' in args.create_fake_data)
             for cv_size, cv_label in zip(cv_sizes, labels):
                 cv_parts.append(pd.concat(cur_parts[:cv_size]))
                 cur_parts = cur_parts[cv_size:]
@@ -298,7 +308,7 @@ def convert(args):
         labels = cv_labels
         parts = cv_parts
     else:
-        parts[0] = pd.concat([fake_data, parts[0]])
+        parts[0] = add_fake_data(parts[0], fake_data_refs, 'S' in args.create_fake_data)
 
     if not os.path.isdir(args.output_dir):
         log_info("Directory %s not found, creating..." % args.output_dir)
@@ -312,7 +322,7 @@ def convert(args):
         # write the output
         log_info("Writing part %s (size %d)..." % (label, len(part)))
         part.to_csv(os.path.join(args.output_dir, label + '.tsv'),
-                    sep=b"\t", index=False, encoding='utf-8')
+                    sep=b"\t", index=False, encoding='utf-8', columns=sorted(part.columns))
     log_info("Done.")
 
 
