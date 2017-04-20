@@ -24,6 +24,7 @@ from tgen.logf import log_info, log_debug
 from tgen.rnd import rnd
 from tgen.embeddings import TokenEmbeddingSeq2SeqExtract, DAEmbeddingSeq2SeqExtract
 from tgen.tf_ml import TFModel
+import tgen.externals.seq2seq as tf06s2s
 
 from ratpred.futil import read_data, write_outputs
 from ratpred.embeddings import Word2VecEmbeddingExtract, CharEmbeddingExtract
@@ -90,6 +91,7 @@ class RatingPredictor(TFModel):
         if self.delex_slots:
             self.delex_slots = set(self.delex_slots.split(','))
         self.delex_slot_names = cfg.get('delex_slot_names', False)
+        self.use_seq2seq = cfg.get('use_seq2seq', False)
         self.reuse_embeddings = cfg.get('reuse_embeddings', False)
         self.tanh_layers = cfg.get('tanh_layers', 0)
         self.predict_ints = cfg.get('predict_ints', False)
@@ -335,7 +337,7 @@ class RatingPredictor(TFModel):
         self.train_order = range(len(self.train_hyps))
         log_info('Using %d training instances.' % len(self.train_hyps))
 
-        # initialize input embeddings
+        # initialize input embedding storage
         if self.hyp_enc:
             self.dict_size = self.embs.init_dict(self.train_hyps)
         else:
@@ -413,18 +415,12 @@ class RatingPredictor(TFModel):
             self.train_mode = tf.placeholder(tf.bool, [], name='train_mode')
 
             if self.hyp_enc:
-                self.initial_state_hyp = tf.placeholder(tf.float32, [None, self.emb_size],
-                                                        name='enc_inp_hyp_init')
                 self.inputs_hyp = [tf.placeholder(tf.int32, [None], name=('enc_inp_hyp-%d' % i))
                                    for i in xrange(self.input_shape[0])]
             if self.ref_enc:
-                self.initial_state_ref = tf.placeholder(tf.float32, [None, self.emb_size],
-                                                        name='enc_inp_ref_init')
                 self.inputs_ref = [tf.placeholder(tf.int32, [None], name=('enc_inp_ref-%d' % i))
                                    for i in xrange(self.input_shape[0])]
             if self.da_enc:
-                self.initial_state_da = tf.placeholder(tf.float32, [None, self.emb_size],
-                                                       name='enc_inp_da_init')
                 self.inputs_da = [tf.placeholder(tf.int32, [None], name=('enc_inp_da-%d' % i))
                                   for i in xrange(self.da_input_shape[0])]
 
@@ -435,9 +431,17 @@ class RatingPredictor(TFModel):
             if self.cell_type.endswith('/2'):
                 self.cell = tf.nn.rnn_cell.MultiRNNCell([self.cell] * 2)
 
-            self.output = self._classif_net(self.inputs_hyp if self.hyp_enc else None,
-                                            self.inputs_ref if self.ref_enc else None,
-                                            self.inputs_da if self.da_enc else None)
+            # build the output
+            if self.use_seq2seq:
+                assert (self.inputs_da is not None and
+                        self.inputs_hyp is not None and
+                        self.inputs_ref is None)
+                # will also build s2s cost, optimizer, and training function
+                self._build_seq2seq_net(self.inputs_da, self.inputs_hyp)
+            else:
+                self._build_classif_net(self.inputs_hyp if self.hyp_enc else None,
+                                        self.inputs_ref if self.ref_enc else None,
+                                        self.inputs_da if self.da_enc else None)
 
         if self.predict_ints:
             # sigmoid cost -- predict a bunch of 1's and 0's (not just one 1)
@@ -473,10 +477,11 @@ class RatingPredictor(TFModel):
                          tf.nn.dropout(variable, self.dropout_keep_prob),
                          variable)
 
-    def _classif_net(self, enc_inputs_hyp=None, enc_inputs_ref=None, enc_inputs_da=None):
-        """Build the rating prediction RNN structure.
-        @return: TensorFlow Output with the prediction
+    def _build_embs(self, enc_inputs_hyp=None, enc_inputs_ref=None, enc_inputs_da=None):
+        """Build embedding lookups over the inputs.
+        @return: a triple of embedding lookup tensors (hyps, refs, das, some of them may be None)
         """
+        enc_in_hyp_emb, enc_in_ref_emb, enc_in_da_emb = None, None, None
         # build embeddings
         with tf.variable_scope('embs') as scope:
             if self.word2vec_embs:
@@ -508,22 +513,13 @@ class RatingPredictor(TFModel):
                 def apply_emb(enc_inp):
                     return self._dropout(tf.nn.embedding_lookup(self.emb_storage, enc_inp))
 
-        # apply RNN over embeddings
         if enc_inputs_hyp is not None:
             with tf.variable_scope('enc_hyp') as scope:
                 enc_in_hyp_emb = [apply_emb(enc_inp) for enc_inp in enc_inputs_hyp]
-                enc_outs_hyp, enc_state_hyp = tf.nn.rnn(self.cell, enc_in_hyp_emb, dtype=tf.float32)
 
         if enc_inputs_ref is not None:
-            if self.reuse_embeddings and enc_inputs_hyp is not None:
-                scope = tf.variable_scope('enc_hyp')
-                scope.reuse_variables()
-            else:
-                scope = tf.variable_scope('enc_ref')
-
-            with scope:
+            with self._get_ref_variable_scope():
                 enc_in_ref_emb = [apply_emb(enc_inp) for enc_inp in enc_inputs_ref]
-                enc_outs_ref, enc_state_ref = tf.nn.rnn(self.cell, enc_in_ref_emb, dtype=tf.float32)
 
         if enc_inputs_da is not None:
             with tf.variable_scope('enc_da'):
@@ -532,10 +528,39 @@ class RatingPredictor(TFModel):
                     'emb_storage',
                     (self.da_dict_size, self.emb_size),
                     initializer=tf.random_uniform_initializer(-sqrt3, sqrt3))
+                self.tb_logger.create_tensor_summaries(self.da_emb_storage)
                 enc_in_da_emb = [self._dropout(tf.nn.embedding_lookup(self.da_emb_storage, enc_inp))
                                  for enc_inp in enc_inputs_da]
+
+        return enc_in_hyp_emb, enc_in_ref_emb, enc_in_da_emb
+
+    def _get_ref_variable_scope(self):
+        if self.reuse_embeddings and enc_inputs_hyp is not None:
+            scope = tf.variable_scope('enc_hyp')
+            scope.reuse_variables()
+        else:
+            scope = tf.variable_scope('enc_ref')
+        return scope
+
+    def _build_classif_net(self, enc_inputs_hyp=None, enc_inputs_ref=None, enc_inputs_da=None):
+        """Build the rating prediction RNN structure.
+        @return: TensorFlow Output with the prediction
+        """
+        # create embedding lookups
+        enc_in_hyp_emb, enc_in_ref_emb, enc_in_da_emb = self._build_embs(
+            enc_inputs_hyp, enc_inputs_ref, enc_inputs_da)
+        # apply RNN over embeddings
+        if enc_inputs_hyp is not None:
+            with tf.variable_scope('enc_hyp'):
+                enc_outs_hyp, enc_state_hyp = tf.nn.rnn(self.cell, enc_in_hyp_emb, dtype=tf.float32)
+
+        if enc_inputs_ref is not None:
+            with self._get_ref_variable_scope():
+                enc_outs_ref, enc_state_ref = tf.nn.rnn(self.cell, enc_in_ref_emb, dtype=tf.float32)
+
+        if enc_inputs_da is not None:
+            with tf.variable_scope('enc_da'):
                 enc_outs_da, enc_state_da = tf.nn.rnn(self.cell, enc_in_da_emb, dtype=tf.float32)
-                self.tb_logger.create_tensor_summaries(self.da_emb_storage)
 
         # concatenate last LSTM states & outputs (works for multilayer LSTMs&GRUs)
         last_outs_and_states = tf.concat(1, (self._flatten_enc_state(enc_state_hyp)
@@ -544,10 +569,16 @@ class RatingPredictor(TFModel):
                                           if enc_inputs_ref is not None else []) +
                                          (self._flatten_enc_state(enc_state_da)
                                           if enc_inputs_da is not None else []))
-        state_size = int(last_outs_and_states.get_shape()[1])
-        hidden = last_outs_and_states
-        self.tb_logger.create_tensor_summaries(hidden)
 
+        # build final FF layers + self.output
+        self._build_final_classifier(last_outs_and_states)
+
+    def _build_final_classifier(self, final_state):
+
+        self.tb_logger.create_tensor_summaries(final_state)
+        state_size = int(final_state.get_shape()[1])
+
+        hidden = final_state
         if self.tanh_layers > 0:
             with tf.variable_scope('hidden'):
                 for layer_no in xrange(self.tanh_layers):
@@ -568,7 +599,44 @@ class RatingPredictor(TFModel):
             self.tb_logger.create_tensor_summaries(w)
             self.tb_logger.create_tensor_summaries(b)
 
-        return tf.matmul(hidden, w) + b
+        # create output variable
+        self.output = tf.matmul(hidden, w) + b
+
+    def _build_seq2seq_net(self, enc_inputs, dec_inputs):
+
+        # seq2seq targets are just decoder inputs shifted by one + padded
+        with tf.variable_scope('seq2seq'):
+            s2s_targets = [dec_inputs[i + 1] for i in xrange(len(dec_inputs) - 1)]
+            s2s_targets.append(tf.placeholder(tf.int32, [None], name=('target-pad')))
+
+        # build embedding lookups
+        dec_in_emb, _, enc_in_emb = self._build_embs(dec_inputs, None, enc_inputs)
+
+        # build the seq2seq network
+        with tf.variable_scope('seq2seq') as scope:
+            # encoder
+            enc_outputs, enc_states = tf06s2s.rnn(self.cell, enc_in_emb, dtype=tf.float32)
+
+            # a concatenation of encoder outputs to put attention on
+            top_states = [tf.reshape(e, [-1, 1, self.cell.output_size]) for e in enc_outputs]
+            att_states = tf.concat(1, top_states)
+
+            # decoder
+            dec_cell = tf.nn.rnn_cell.OutputProjectionWrapper(self.cell, self.dict_size)
+            dec_outputs, dec_states = tf06s2s.embedding_attention_decoder(
+                dec_inputs, enc_states[-1], att_states, dec_cell,
+                self.dict_size, self.emb_size, 1, self.dict_size,
+                feed_previous=False, scope=scope)
+
+            # decoding cost
+            s2s_cost_weights = [tf.ones_like(trg, tf.float32, name='cost_weights')
+                                for trg in self.s2s_targets]
+            self.s2s_cost = tf06s2s.sequence_loss(dec_outputs, s2s_targets,
+                                                  s2s_cost_weights, self.dict_size)
+
+        # build the final classification layer(s), using last seq2seq output
+        final_state = self._flatten_enc_state(dec_states[-1])
+        self._build_final_classifier(final_state)
 
     def _batches(self):
         """Create batches from the input; use as iterator."""
@@ -590,20 +658,17 @@ class RatingPredictor(TFModel):
         fd[self.train_mode] = train_mode
 
         if inputs_hyp is not None:
-            fd[self.initial_state_hyp] = np.zeros([inputs_hyp.shape[0], self.emb_size])
             # TODO check for none when squeezing ?
             sliced_hyp = np.squeeze(np.array(np.split(inputs_hyp, len(inputs_hyp[0]), axis=1)), axis=2)
             for input_, slice_ in zip(self.inputs_hyp, sliced_hyp):
                 fd[input_] = slice_
 
         if inputs_ref is not None:
-            fd[self.initial_state_ref] = np.zeros([inputs_ref.shape[0], self.emb_size])
             sliced_ref = np.squeeze(np.array(np.split(inputs_ref, len(inputs_ref[0]), axis=1)), axis=2)
             for input_, slice_ in zip(self.inputs_ref, sliced_ref):
                 fd[input_] = slice_
 
         if inputs_da is not None:
-            fd[self.initial_state_da] = np.zeros([inputs_da.shape[0], self.emb_size])
             sliced_da = np.squeeze(np.array(np.split(inputs_da, len(inputs_da[0]), axis=1)), axis=2)
             for input_, slice_ in zip(self.inputs_da, sliced_da):
                 fd[input_] = slice_
