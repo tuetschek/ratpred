@@ -92,11 +92,13 @@ class RatingPredictor(TFModel):
             self.delex_slots = set(self.delex_slots.split(','))
         self.delex_slot_names = cfg.get('delex_slot_names', False)
         self.use_seq2seq = cfg.get('use_seq2seq', False)
+        self.seq2seq_pretrain_passes = cfg.get('seq2seq_pretrain_passes', 0)
         self.reuse_embeddings = cfg.get('reuse_embeddings', False)
         self.tanh_layers = cfg.get('tanh_layers', 0)
         self.predict_ints = cfg.get('predict_ints', False)
         self.predict_halves = cfg.get('predict_halves', False)
         self.predict_coarse = cfg.get('predict_coarse', None)
+        self.scale_reversed = cfg.get('scale_reversed', False)  # HTER is reversed
         self.num_outputs = 1  # will be changed in training if predict_ints is True
 
         self.tb_logger = DummyTensorBoardLogger()
@@ -192,9 +194,20 @@ class RatingPredictor(TFModel):
         # initialize training
         self._init_training(inputs, targets, valid_inputs, valid_targets, data_portion)
 
+        # pretrain seq2seq model
+        if self.seq2seq_pretrain_passes > 0:
+            log_info('Seq2seq pretraining...')
+            log_info('Using %d instances.' % sum(len(batch) for batch in self._seq2seq_batches()))
+            for pass_no in xrange(1, self.seq2seq_pretrain_passes + 1):
+                if self.randomize:
+                    rnd.shuffle(self.train_order)
+                pass_cost = self._seq2seq_training_pass(pass_no)
+                # TODO some validation?
+
         # start training
         top_cost = float('nan')
 
+        log_info('Starting passes...')
         for iter_no in xrange(1, self.passes + 1):
             self.train_order = range(len(self.train_hyps))
             if self.randomize:
@@ -433,9 +446,7 @@ class RatingPredictor(TFModel):
 
             # build the output
             if self.use_seq2seq:
-                assert (self.inputs_da is not None and
-                        self.inputs_hyp is not None and
-                        self.inputs_ref is None)
+                assert (self.da_enc and self.hyp_enc and not self.ref_enc)
                 # will also build s2s cost, optimizer, and training function
                 self._build_seq2seq_net(self.inputs_da, self.inputs_hyp)
             else:
@@ -470,6 +481,7 @@ class RatingPredictor(TFModel):
         self.saver = tf.train.Saver(tf.global_variables(), write_version=tf.train.SaverDef.V2)
 
     def _dropout(self, variable):
+        """Apply dropout to a given TF variable (will be used in training, not in decoding)."""
         if self.dropout_keep_prob == 1.0:
             return variable
         train_mode_mask = tf.fill(tf.shape(variable)[:1], self.train_mode)
@@ -483,7 +495,7 @@ class RatingPredictor(TFModel):
         """
         enc_in_hyp_emb, enc_in_ref_emb, enc_in_da_emb = None, None, None
         # build embeddings
-        with tf.variable_scope('embs') as scope:
+        with tf.variable_scope('embs'):
             if self.word2vec_embs:
                 self.emb_storage = tf.Variable(
                     self.embs.get_w2v_matrix(),
@@ -514,7 +526,7 @@ class RatingPredictor(TFModel):
                     return self._dropout(tf.nn.embedding_lookup(self.emb_storage, enc_inp))
 
         if enc_inputs_hyp is not None:
-            with tf.variable_scope('enc_hyp') as scope:
+            with tf.variable_scope('enc_hyp'):
                 enc_in_hyp_emb = [apply_emb(enc_inp) for enc_inp in enc_inputs_hyp]
 
         if enc_inputs_ref is not None:
@@ -535,7 +547,9 @@ class RatingPredictor(TFModel):
         return enc_in_hyp_emb, enc_in_ref_emb, enc_in_da_emb
 
     def _get_ref_variable_scope(self):
-        if self.reuse_embeddings and enc_inputs_hyp is not None:
+        """Get the correct variable scope for reference encoder; depending on whether the system output and
+        the reference encoder variables are shared or not."""
+        if self.reuse_embeddings and self.hyp_enc:
             scope = tf.variable_scope('enc_hyp')
             scope.reuse_variables()
         else:
@@ -574,7 +588,7 @@ class RatingPredictor(TFModel):
         self._build_final_classifier(last_outs_and_states)
 
     def _build_final_classifier(self, final_state):
-
+        """Build the final feedforward layers for the classification."""
         self.tb_logger.create_tensor_summaries(final_state)
         state_size = int(final_state.get_shape()[1])
 
@@ -603,11 +617,12 @@ class RatingPredictor(TFModel):
         self.output = tf.matmul(hidden, w) + b
 
     def _build_seq2seq_net(self, enc_inputs, dec_inputs):
+        """Build the seq2seq part of the network, over the given DA/system output inputs."""
 
         # seq2seq targets are just decoder inputs shifted by one + padded
         with tf.variable_scope('seq2seq'):
-            s2s_targets = [dec_inputs[i + 1] for i in xrange(len(dec_inputs) - 1)]
-            s2s_targets.append(tf.placeholder(tf.int32, [None], name=('target-pad')))
+            self.s2s_targets = [dec_inputs[i + 1] for i in xrange(len(dec_inputs) - 1)]
+            self.s2s_targets.append(tf.placeholder(tf.int32, [None], name=('target-pad')))
 
         # build embedding lookups
         dec_in_emb, _, enc_in_emb = self._build_embs(dec_inputs, None, enc_inputs)
@@ -628,14 +643,16 @@ class RatingPredictor(TFModel):
                 self.dict_size, self.emb_size, 1, self.dict_size,
                 feed_previous=False, scope=scope)
 
-            # decoding cost
+            # decoding cost, optimization function
             s2s_cost_weights = [tf.ones_like(trg, tf.float32, name='cost_weights')
                                 for trg in self.s2s_targets]
-            self.s2s_cost = tf06s2s.sequence_loss(dec_outputs, s2s_targets,
+            self.s2s_cost = tf06s2s.sequence_loss(dec_outputs, self.s2s_targets,
                                                   s2s_cost_weights, self.dict_size)
+            self.s2s_optimizer = tf.train.AdamOptimizer(self.alpha)
+            self.s2s_train_func = self.s2s_optimizer.minimize(self.s2s_cost)
 
         # build the final classification layer(s), using last seq2seq output
-        final_state = self._flatten_enc_state(dec_states[-1])
+        final_state = tf.concat(1, self._flatten_enc_state(dec_states[-1]))
         self._build_final_classifier(final_state)
 
     def _batches(self):
@@ -653,8 +670,8 @@ class RatingPredictor(TFModel):
 
     def _add_inputs_to_feed_dict(self, fd,
                                  inputs_hyp=None, inputs_ref=None, inputs_da=None,
-                                 train_mode=False):
-
+                                 inputs_s2s_trg=False, train_mode=False):
+        """Add inputs into TF feed_dict."""
         fd[self.train_mode] = train_mode
 
         if inputs_hyp is not None:
@@ -662,6 +679,13 @@ class RatingPredictor(TFModel):
             sliced_hyp = np.squeeze(np.array(np.split(inputs_hyp, len(inputs_hyp[0]), axis=1)), axis=2)
             for input_, slice_ in zip(self.inputs_hyp, sliced_hyp):
                 fd[input_] = slice_
+
+            if inputs_s2s_trg:
+                sliced_trg = np.concatenate((sliced_hyp[1:],
+                                             np.array(len(sliced_hyp[0]) *
+                                                      [self.embs.VOID])[np.newaxis]), axis=0)
+                for input_, slice_ in zip(self.s2s_targets, sliced_trg):
+                    fd[input_] = slice_
 
         if inputs_ref is not None:
             sliced_ref = np.squeeze(np.array(np.split(inputs_ref, len(inputs_ref[0]), axis=1)), axis=2)
@@ -747,6 +771,56 @@ class RatingPredictor(TFModel):
                        for key in ['dist_total', 'dist_avg', 'accuracy', 'pearson', 'cost_comb']))
         self.tb_logger.add_to_log(pass_no, {'valid_' + key: value
                                             for key, value in results.iteritems()})
+
+    def _seq2seq_training_pass(self, pass_no):
+        pass_start_time = time.time()
+
+        log_debug('\n***\nTR %05d:' % pass_no)
+        pass_cost = 0.0
+
+        for inst_nos in self._seq2seq_batches():
+
+            log_debug('INST-NOS: ' + str(inst_nos))
+            log_debug("\n".join(' '.join([tok for tok, _ in self.train_hyps[i]]) + "\n" +
+                                ' '.join([tok for tok, _ in self.train_refs[i]]) + "\n" +
+                                unicode(self.train_das[i])
+                                for i in inst_nos))
+
+            fd = {}
+            self._add_inputs_to_feed_dict(fd,
+                                          inputs_hyp=self.X_hyp[inst_nos],
+                                          inputs_da=self.X_da[inst_nos],
+                                          inputs_s2s_trg=True, train_mode=True)
+
+            required = [self.s2s_cost, self.s2s_train_func]
+            cost, _ = self.session.run(required, feed_dict=fd)
+            log_debug('COST: %f' % cost)
+
+            pass_cost += cost
+
+        # print and return statistics
+        self._print_seq2seq_pass_stats(pass_no,
+                                       datetime.timedelta(seconds=(time.time() - pass_start_time)),
+                                       pass_cost)
+        return pass_cost
+
+    def _print_seq2seq_pass_stats(self, pass_no, time, pass_cost):
+        log_info('PASS %03d: duration %s, cost %f' % (pass_no, str(time), pass_cost))
+
+    def _seq2seq_batches(self):
+        """Create batches from the input (using only "good" instances); use as iterator."""
+        # filter instances, use best 1/4 of the range
+        if self.scale_reversed:
+            good_lo = self.outputs_range_lo
+            good_hi = good_lo + ((self.outputs_range_hi - self.outputs_range_lo) / 4.0)
+        else:
+            good_hi = self.outputs_range_hi
+            good_lo = good_hi - ((self.outputs_range_hi - self.outputs_range_lo) / 4.0)
+        train_order = [i for i in self.train_order
+                       if self.y[i] >= good_lo and self.y[i] <= good_hi]
+        # yield only filtered instances
+        for i in xrange(0, len(train_order), self.batch_size):
+            yield train_order[i: i + self.batch_size]
 
     def evaluate(self, inputs, raw_targets, output_file=None):
         """

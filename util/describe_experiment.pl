@@ -45,6 +45,9 @@ $iters = ( $config_data =~ /'passes'\s*:\s*([0-9]+)\s*,/ )[0];
 if ( $config_data =~ /'pretrain_passes'\s*:\s*([0-9]+)\s*,/ and $1 > 0){
     $iters = $1 . '^'. $iters;
 }
+if ( $config_data =~ /'use_seq2seq'\s*:\s*True/ ){
+    $iters = 'S' . (( $config_data =~ /'seq2seq_pretrain_passes'\s*:\s*([0-9]+)\s*,/ )[0] // 0 ) . ' ' . $iters;
+}
 $iters .= '/' . ( $config_data =~ /'batch_size'\s*:\s*([0-9]+)\s*,/ )[0];
 $iters .= '/' . ( $config_data =~ /'alpha'\s*:\s*([.0-9eE-]+)\s*,/ )[0];
 if ( $config_data =~ /'alpha_decay'\s*:\s*([.0-9eE-]+)\s*,/ and $1 > 0){
