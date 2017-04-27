@@ -91,8 +91,11 @@ class RatingPredictor(TFModel):
         if self.delex_slots:
             self.delex_slots = set(self.delex_slots.split(','))
         self.delex_slot_names = cfg.get('delex_slot_names', False)
+
         self.use_seq2seq = cfg.get('use_seq2seq', False)
         self.seq2seq_pretrain_passes = cfg.get('seq2seq_pretrain_passes', 0)
+        self.seq2seq_min_passes = cfg.get('seq2seq_min_passes', 0)
+
         self.reuse_embeddings = cfg.get('reuse_embeddings', False)
         self.tanh_layers = cfg.get('tanh_layers', 0)
         self.predict_ints = cfg.get('predict_ints', False)
@@ -141,12 +144,25 @@ class RatingPredictor(TFModel):
             data['da_input_shape'] = self.da_input_shape
         return data
 
-    def _save_checkpoint(self):
-        """Store an in-memory checkpoint containing all variables and settings of the model.
-        Will always overwrite the last checkpoint."""
-        log_info('Storing in-memory checkpoint...')
-        self.checkpoint = (self.get_all_settings(), self.get_model_params())
-        log_info('Done.')
+    def _save_checkpoint(self, top_cost, iter_no, cost, model_fname=None):
+        """If the current cost is better than the top cost, store an in-memory checkpoint
+        containing all variables and settings of the model. Will always overwrite the
+        last checkpoint. Store an on-disk checkpoint based on current iteration number."""
+        # check if we need a new checkpoint
+        if math.isnan(top_cost) or cost < top_cost:
+            log_info('Storing in-memory checkpoint...')
+            self.checkpoint = (self.get_all_settings(), self.get_model_params())
+            self.checkpoint_pass = iter_no
+            log_info('Done.')
+
+        # once in a while, save current best checkpoint to disk
+        if (model_fname and
+                (iter_no > self.disk_store_min_pass) and
+                (iter_no - self.disk_stored_pass >= self.disk_store_freq)):
+            log_info('Storing last checkpoint to disk...')
+            self.save_to_file(model_fname, self.disk_stored_pass > 0)
+            self.disk_stored_pass = iter_no
+            log_info('Done.')
 
     def _restore_checkpoint(self):
         if not self.checkpoint:
@@ -172,7 +188,7 @@ class RatingPredictor(TFModel):
 
         # re-build TF graph and restore the TF session
         tf_session_fname = os.path.abspath(re.sub(r'(.pickle)?(.gz)?$', '.tfsess', model_fname))
-        ret._init_neural_network()
+        ret._build_neural_network()
         ret.saver.restore(ret.session, tf_session_fname)
         return ret
 
@@ -181,6 +197,33 @@ class RatingPredictor(TFModel):
         return read_data(data_file, self.target_col,
                          'text' if self.da_enc == 'token' else 'cambridge',
                          self.delex_slots, self.delex_slot_names)
+
+    def _seq2seq_pretrain(self, model_fname=None):
+
+        log_info('Seq2seq pretraining...')
+        log_info('Using %d instances.' % sum(len(batch) for batch in self._seq2seq_train_batches()))
+
+        top_cost = float('nan')
+
+        for pass_no in xrange(1, self.seq2seq_pretrain_passes + 1):
+            if self.randomize:
+                rnd.shuffle(self.train_order)
+
+            self._seq2seq_training_pass(pass_no)
+
+            if (self.valid_inputs and self.validation_freq and
+                    pass_no > self.seq2seq_min_passes and pass_no % self.validation_freq == 0):
+
+                cost = self._seq2seq_evaluate(self.valid_inputs, self.valid_y)
+                self._print_seq2seq_validation_stats(pass_no, cost)
+
+                # if we have the best model so far, save it as a checkpoint (overwrite previous)
+                self._save_checkpoint(top_cost, pass_no, cost, model_fname)
+                # remember the current top cost
+                top_cost = min(top_cost, cost) if not math.isnan(top_cost) else cost
+
+        # restore the best parameters so far
+        self._restore_checkpoint()
 
     def train(self, train_data_file, valid_data_file=None, data_portion=1.0, model_fname=None):
         """Run training on the given training data.
@@ -196,13 +239,7 @@ class RatingPredictor(TFModel):
 
         # pretrain seq2seq model
         if self.seq2seq_pretrain_passes > 0:
-            log_info('Seq2seq pretraining...')
-            log_info('Using %d instances.' % sum(len(batch) for batch in self._seq2seq_batches()))
-            for pass_no in xrange(1, self.seq2seq_pretrain_passes + 1):
-                if self.randomize:
-                    rnd.shuffle(self.train_order)
-                pass_cost = self._seq2seq_training_pass(pass_no)
-                # TODO some validation?
+            self._seq2seq_pretrain(model_fname)
 
         # start training
         top_cost = float('nan')
@@ -224,17 +261,12 @@ class RatingPredictor(TFModel):
                 self._print_valid_stats(iter_no, results)
 
                 # if we have the best model so far, save it as a checkpoint (overwrite previous)
-                if math.isnan(top_cost) or results['cost_comb'] < top_cost:
-                    top_cost = results['cost_comb']
-                    self._save_checkpoint()
-                    self.checkpoint_pass = iter_no
-
-                    # once in a while, save current best checkpoint to disk
-                    if (model_fname and
-                            (iter_no > self.disk_store_min_pass) and
-                            (iter_no - self.disk_stored_pass >= self.disk_store_freq)):
-                        self.save_to_file(model_fname, self.disk_stored_pass > 0)
-                        self.disk_stored_pass = iter_no
+                self._save_checkpoint(top_cost, iter_no + self.seq2seq_pretrain_passes,
+                                      results['cost_comb'], model_fname)
+                # remember the current top cost
+                top_cost = (min(top_cost, results['cost_comb'])
+                            if not math.isnan(top_cost) else
+                            results['cost_comb'])
 
             if iter_no == self.pretrain_passes:  # continue training only on real data
                 self._remove_fake_training_data()
@@ -391,7 +423,7 @@ class RatingPredictor(TFModel):
             self.num_outputs = 1  # just one real-valued output
 
         # initialize NN classifier
-        self._init_neural_network()
+        self._build_neural_network()
         # initialize the NN variables
         self.session.run(tf.global_variables_initializer())
 
@@ -415,7 +447,7 @@ class RatingPredictor(TFModel):
                 for val in ints]
         return np.array(ints)
 
-    def _init_neural_network(self):
+    def _build_neural_network(self):
         """Create the neural network for classification"""
 
         # set TensorFlow random seed
@@ -778,7 +810,7 @@ class RatingPredictor(TFModel):
         log_debug('\n***\nTR %05d:' % pass_no)
         pass_cost = 0.0
 
-        for inst_nos in self._seq2seq_batches():
+        for inst_nos in self._seq2seq_train_batches():
 
             log_debug('INST-NOS: ' + str(inst_nos))
             log_debug("\n".join(' '.join([tok for tok, _ in self.train_hyps[i]]) + "\n" +
@@ -804,23 +836,56 @@ class RatingPredictor(TFModel):
                                        pass_cost)
         return pass_cost
 
+    def _seq2seq_evaluate(self, inputs, targets):
+        """Evaluate seq2seq model for next-word prediction on the given data (typically validation
+        data). Will only use top 1/4-rated instances.
+        @param inputs: 3-tuple of validation DAs, references (unused), hypotheses
+        @param targets: human scores of the DA-hypotheses pairs
+        @return: the total decoder cost of decoding the given hypotheses given the input DAs
+        """
+        das, _, hyps = inputs
+        # convert inputs and outputs
+        hyps = np.array([self.embs.get_embeddings(sent) for sent in hyps])
+        das = np.array([self.da_embs.get_embeddings(da) for da in das])
+        y = np.array(targets)
+
+        # run and calculate cost
+        cost = 0.0
+        for inst_nos in self._seq2seq_batches(range(len(inputs)), y):
+
+            fd = {}
+            self._add_inputs_to_feed_dict(fd,
+                                          inputs_hyp=hyps[inst_nos],
+                                          inputs_da=das[inst_nos],
+                                          inputs_s2s_trg=True)
+            cost += self.session.run([self.s2s_cost], feed_dict=fd)[0]
+        return cost
+
     def _print_seq2seq_pass_stats(self, pass_no, time, pass_cost):
         log_info('PASS %03d: duration %s, cost %f' % (pass_no, str(time), pass_cost))
 
-    def _seq2seq_batches(self):
+    def _print_seq2seq_validation_stats(self, pass_no, pass_cost):
+        log_info('PASS %03d: seq2seq validation cost: %f' % (pass_no, pass_cost))
+
+    def _seq2seq_train_batches(self):
+        # TODO this probably won't work for binary predictors (but they're unused anyway)
+        return self._seq2seq_batches(self.train_order, self.y)
+
+    def _seq2seq_batches(self, order, targets):
         """Create batches from the input (using only "good" instances); use as iterator."""
-        # filter instances, use best 1/4 of the range
+        # find out which are the best instances
         if self.scale_reversed:
             good_lo = self.outputs_range_lo
             good_hi = good_lo + ((self.outputs_range_hi - self.outputs_range_lo) / 4.0)
         else:
             good_hi = self.outputs_range_hi
             good_lo = good_hi - ((self.outputs_range_hi - self.outputs_range_lo) / 4.0)
-        train_order = [i for i in self.train_order
-                       if self.y[i] >= good_lo and self.y[i] <= good_hi]
+        # filter instances, use best 1/4 of the range
+        order = [i for i in order
+                 if targets[i] >= good_lo and targets[i] <= good_hi]
         # yield only filtered instances
-        for i in xrange(0, len(train_order), self.batch_size):
-            yield train_order[i: i + self.batch_size]
+        for i in xrange(0, len(order), self.batch_size):
+            yield order[i: i + self.batch_size]
 
     def evaluate(self, inputs, raw_targets, output_file=None):
         """
