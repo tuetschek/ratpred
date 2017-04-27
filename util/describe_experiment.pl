@@ -48,6 +48,9 @@ if ( $config_data =~ /'pretrain_passes'\s*:\s*([0-9]+)\s*,/ and $1 > 0){
 if ( $config_data =~ /'use_seq2seq'\s*:\s*True/ ){
     $iters = 'S' . (( $config_data =~ /'seq2seq_pretrain_passes'\s*:\s*([0-9]+)\s*,/ )[0] // 0 ) . ' ' . $iters;
 }
+if ((( $config_data =~ /'daclassif_pretrain_passes'\s*:\s*([0-9]+)\s*,/ )[0] // 0 ) > 0){
+    $iters = 'D' . (( $config_data =~ /'daclassif_pretrain_passes'\s*:\s*([0-9]+)\s*,/ )[0] // 0 ) . ' ' . $iters;
+}
 $iters .= '/' . ( $config_data =~ /'batch_size'\s*:\s*([0-9]+)\s*,/ )[0];
 $iters .= '/' . ( $config_data =~ /'alpha'\s*:\s*([.0-9eE-]+)\s*,/ )[0];
 if ( $config_data =~ /'alpha_decay'\s*:\s*([.0-9eE-]+)\s*,/ and $1 > 0){
@@ -77,6 +80,7 @@ if ($portion < 1.0){
     $training_set .= '/' . $portion;
 }
 $training_set .= ' -slotn' if ( $config_data =~ /'delex_slot_names'\s*:\s*True/ );
+$training_set .= ' -dlxda' if ( $config_data =~ /'delex_das'\s*:\s*True/ );
 $training_set .= ' +lex' if ( $config_data !~ /'delex_slots'\s*:\s*'[^']/ );
 my $target_col = ( $config_data =~ /'target_col'\s*:\s*'([^']*)'/ )[0] // 'quality';
 $target_col = substr($target_col, 0, 3);
