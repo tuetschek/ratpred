@@ -110,7 +110,7 @@ class RatingPredictor(TFModel):
     def set_tensorboard_logging(self, log_dir, run_id):
         self.tb_logger = TensorBoardLogger(log_dir, run_id)
 
-    def save_to_file(self, model_fname, skip_settings=False):
+    def save_to_file(self, model_fname):
         """Save the predictor to a file (actually two files, one for configuration and one
         for the TensorFlow graph, which must be stored separately).
 
@@ -119,10 +119,9 @@ class RatingPredictor(TFModel):
         @param skip_settings: if True, saving settings is skipped, only the model parameters are \
             written to disk
         """
-        if not skip_settings:
-            log_info("Saving model settings to %s..." % model_fname)
-            with file_stream(model_fname, 'wb', encoding=None) as fh:
-                pickle.dump(self.get_all_settings(), fh, protocol=pickle.HIGHEST_PROTOCOL)
+        log_info("Saving model settings to %s..." % model_fname)
+        with file_stream(model_fname, 'wb', encoding=None) as fh:
+            pickle.dump(self.get_all_settings(), fh, protocol=pickle.HIGHEST_PROTOCOL)
         tf_session_fname = re.sub(r'(.pickle)?(.gz)?$', '.tfsess', model_fname)
         log_info("Saving model parameters to %s..." % tf_session_fname)
         self.saver.save(self.session, tf_session_fname)
@@ -161,7 +160,10 @@ class RatingPredictor(TFModel):
                 (iter_no > self.disk_store_min_pass) and
                 (iter_no - self.disk_stored_pass >= self.disk_store_freq)):
             log_info('Storing last checkpoint to disk...')
-            self.save_to_file(model_fname, self.disk_stored_pass > 0)
+            with file_stream(model_fname, 'wb', encoding=None) as fh:
+                settings, params = self.checkpoint
+                pickle.dump(settings, fh, protocol=pickle.HIGHEST_PROTOCOL)
+                pickle.dump(params, fh, protocol=pickle.HIGHEST_PROTOCOL)
             self.disk_stored_pass = iter_no
             log_info('Done.')
 
@@ -186,10 +188,17 @@ class RatingPredictor(TFModel):
             data = pickle.load(fh)
             ret = RatingPredictor(cfg=data['cfg'])
             ret.load_all_settings(data)
+            ret._build_neural_network()  # rebuild TF graph
+            try:
+                # load model params from pickle (fails if they're not there)
+                ret.set_model_params(pickle.load(fh))
+                return ret
+            except:
+                pass
 
-        # re-build TF graph and restore the TF session
+        # load model params by TF saver
+        log_info("Looking for TF saved session...")
         tf_session_fname = os.path.abspath(re.sub(r'(.pickle)?(.gz)?$', '.tfsess', model_fname))
-        ret._build_neural_network()
         ret.saver.restore(ret.session, tf_session_fname)
         return ret
 
