@@ -24,6 +24,9 @@ from tgen.logf import log_info, log_debug
 from tgen.rnd import rnd
 from tgen.embeddings import TokenEmbeddingSeq2SeqExtract, DAEmbeddingSeq2SeqExtract
 from tgen.tf_ml import TFModel
+from tgen.features import Features
+from tgen.ml import DictVectorizer
+
 import tgen.externals.seq2seq as tf06s2s
 
 from ratpred.futil import read_data, write_outputs
@@ -96,6 +99,11 @@ class RatingPredictor(TFModel):
         self.use_seq2seq = cfg.get('use_seq2seq', False)
         self.seq2seq_pretrain_passes = cfg.get('seq2seq_pretrain_passes', 0)
         self.seq2seq_min_passes = cfg.get('seq2seq_min_passes', 0)
+
+        self.daclassif_pretrain_passes = cfg.get('daclassif_pretrain_passes', 0)
+        if self.daclassif_pretrain_passes and self.use_seq2seq:
+            raise ValueError('Cannot use seq2seq and DA classification pretraining together!')
+        self.daclassif_min_passes = cfg.get('daclassif_min_passes', 0)
 
         self.reuse_embeddings = cfg.get('reuse_embeddings', False)
         self.tanh_layers = cfg.get('tanh_layers', 0)
@@ -235,6 +243,32 @@ class RatingPredictor(TFModel):
         # restore the best parameters so far
         self._restore_checkpoint()
 
+    def _daclassif_pretrain(self, model_fname=None):
+        log_info('DA classification pretraining...')
+        log_info('Using %d instances.' % sum(len(batch) for batch in self._seq2seq_train_batches()))
+
+        top_cost = float('nan')
+
+        for pass_no in xrange(1, self.daclassif_pretrain_passes + 1):
+            if self.randomize:
+                rnd.shuffle(self.train_order)
+
+            self._daclassif_training_pass(pass_no)
+
+            if (self.valid_inputs and self.validation_freq and
+                    pass_no > self.daclassif_min_passes and pass_no % self.validation_freq == 0):
+
+                cost = self._daclassif_evaluate(self.valid_inputs, self.valid_y)
+                self._print_daclassif_validation_stats(pass_no, cost)
+
+                # if we have the best model so far, save it as a checkpoint (overwrite previous)
+                self._save_checkpoint(top_cost, pass_no, cost, model_fname)
+                # remember the current top cost
+                top_cost = min(top_cost, cost) if not math.isnan(top_cost) else cost
+
+        # restore the best parameters so far
+        self._restore_checkpoint()
+
     def train(self, train_data_file, valid_data_file=None, data_portion=1.0, model_fname=None):
         """Run training on the given training data.
         """
@@ -247,9 +281,11 @@ class RatingPredictor(TFModel):
         # initialize training
         self._init_training(inputs, targets, valid_inputs, valid_targets, data_portion)
 
-        # pretrain seq2seq model
+        # pretrain using seq2seq decoding / DA classification
         if self.seq2seq_pretrain_passes > 0:
             self._seq2seq_pretrain(model_fname)
+        if self.daclassif_pretrain_passes > 0:
+            self._daclassif_pretrain(model_fname)
 
         # start training
         top_cost = float('nan')
@@ -259,8 +295,11 @@ class RatingPredictor(TFModel):
             self.train_order = range(len(self.train_hyps))
             if self.randomize:
                 rnd.shuffle(self.train_order)
+
+            # the actual training pass
             pass_cost = self._training_pass(iter_no)
 
+            # validation
             if (self.valid_inputs and self.validation_freq and
                     iter_no > self.min_passes and iter_no % self.validation_freq == 0):
 
@@ -618,6 +657,10 @@ class RatingPredictor(TFModel):
             with tf.variable_scope('enc_da'):
                 enc_outs_da, enc_state_da = tf.nn.rnn(self.cell, enc_in_da_emb, dtype=tf.float32)
 
+        if self.daclassif_pretrain_passes > 0:
+            assert enc_inputs_hyp is not None
+            self._build_da_classifier(tf.concat(1, self._flatten_enc_state(enc_state_hyp)))
+
         # concatenate last LSTM states & outputs (works for multilayer LSTMs&GRUs)
         last_outs_and_states = tf.concat(1, (self._flatten_enc_state(enc_state_hyp)
                                              if enc_inputs_hyp is not None else []) +
@@ -628,6 +671,38 @@ class RatingPredictor(TFModel):
 
         # build final FF layers + self.output
         self._build_final_classifier(last_outs_and_states)
+
+    def _build_da_classifier(self, final_state):
+
+        # data conversion (DAs to binary vectors)
+        self.daclassif_feats = Features(['dat: dat_presence', 'svp: svp_presence'])
+        self.daclassif_vect = DictVectorizer(sparse=False, binarize_numeric=True)
+        self.daclassif_y = [self.daclassif_feats.get_features(None, {'da': da})
+                            for da in self.train_das]
+        self.daclassif_y = self.daclassif_vect.fit_transform(self.daclassif_y)
+
+        num_da_classes = len(self.daclassif_vect.get_feature_names())
+        log_info('Number of DA classification classes: %d.' % num_da_classes)
+
+        state_size = int(final_state.get_shape()[1])
+
+        with tf.variable_scope('daclassif'):
+            # placeholder for target binary vectors
+            self.daclassif_targets = tf.placeholder(tf.float32, [None, num_da_classes],
+                                                    name='targets')
+            # final classification layer
+            w = tf.get_variable('daclassif-w', (state_size, num_da_classes),
+                                initializer=tf.random_normal_initializer(stddev=0.1))
+            b = tf.get_variable('daclassif-b', (num_da_classes,),
+                                initializer=tf.constant_initializer())
+            self.daclassif_output = tf.matmul(final_state, w) + b
+
+            # training criterion & optimizer
+            self.daclassif_cost = tf.reduce_mean(tf.reduce_sum(
+                tf.nn.sigmoid_cross_entropy_with_logits(self.daclassif_output,
+                                                        self.daclassif_targets, name='CE'), 1))
+            self.daclassif_optimizer = tf.train.AdamOptimizer(self.alpha)
+            self.daclassif_train_func = self.daclassif_optimizer.minimize(self.daclassif_cost)
 
     def _build_final_classifier(self, final_state):
         """Build the final feedforward layers for the classification."""
@@ -712,7 +787,8 @@ class RatingPredictor(TFModel):
 
     def _add_inputs_to_feed_dict(self, fd,
                                  inputs_hyp=None, inputs_ref=None, inputs_da=None,
-                                 inputs_s2s_trg=False, train_mode=False):
+                                 inputs_s2s_trg=False, inputs_daclassif_trg=None,
+                                 train_mode=False):
         """Add inputs into TF feed_dict."""
         fd[self.train_mode] = train_mode
 
@@ -739,6 +815,9 @@ class RatingPredictor(TFModel):
             for input_, slice_ in zip(self.inputs_da, sliced_da):
                 fd[input_] = slice_
 
+        if inputs_daclassif_trg is not None:
+            fd[self.daclassif_targets] = inputs_daclassif_trg
+
     def _training_pass(self, pass_no):
         """Perform one training pass through the whole training data, print statistics."""
 
@@ -763,10 +842,11 @@ class RatingPredictor(TFModel):
                                 for i in inst_nos))
 
             fd = {self.target: self.y[inst_nos]}
-            self._add_inputs_to_feed_dict(fd, self.X_hyp[inst_nos] if self.hyp_enc else None,
-                                          self.X_ref[inst_nos] if self.ref_enc else None,
-                                          self.X_da[inst_nos] if self.da_enc else None,
-                                          True)
+            self._add_inputs_to_feed_dict(fd,
+                                          inputs_hyp=self.X_hyp[inst_nos] if self.hyp_enc else None,
+                                          inputs_ref=self.X_ref[inst_nos] if self.ref_enc else None,
+                                          inputs_da=self.X_da[inst_nos] if self.da_enc else None,
+                                          train_mode=True)
 
             required = [self.output, self.cost, self.train_func]
             if pass_insts == len(self.train_hyps):  # last batch
@@ -934,3 +1014,64 @@ class RatingPredictor(TFModel):
                 'pearson_pv': pearson_pv,
                 'spearman': spearman,
                 'spearman_pv': spearman_pv}
+
+    def _daclassif_training_pass(self, pass_no):
+        pass_start_time = time.time()
+
+        log_debug('\n***\nTR %05d:' % pass_no)
+        pass_cost = 0.0
+
+        for inst_nos in self._seq2seq_train_batches():
+
+            log_debug('INST-NOS: ' + str(inst_nos))
+            log_debug("\n".join(' '.join([tok for tok, _ in self.train_hyps[i]]) + "\n" +
+                                unicode(self.train_das[i])
+                                for i in inst_nos))
+
+            fd = {}
+            self._add_inputs_to_feed_dict(fd,
+                                          inputs_hyp=self.X_hyp[inst_nos],
+                                          inputs_daclassif_trg=self.daclassif_y[inst_nos],
+                                          train_mode=True)
+
+            required = [self.daclassif_cost, self.daclassif_train_func]
+            cost, _ = self.session.run(required, feed_dict=fd)
+            log_debug('COST: %f' % cost)
+
+            pass_cost += cost
+
+        # print and return statistics
+        self._print_daclassif_pass_stats(
+            pass_no, datetime.timedelta(seconds=(time.time() - pass_start_time)), pass_cost)
+        return pass_cost
+
+    def _daclassif_evaluate(self, inputs, ratings):
+        """Evaluate DA classification on the given data (typically validation data).
+        Will only use top 1/4-rated instances.
+        @param inputs: 3-tuple of validation DAs, references (unused), hypotheses
+        @param ratings: human scores of the DA-hypotheses pairs (use for filtering)
+        @return: the total decoder cost of decoding the given hypotheses given the input DAs
+        """
+        das, _, hyps = inputs
+        # convert inputs and outputs
+        hyps = np.array([self.embs.get_embeddings(sent) for sent in hyps])
+        das = [self.daclassif_feats.get_features(None, {'da': da}) for da in das]
+        das = self.daclassif_vect.transform(das)
+        ratings = np.array(ratings)
+
+        # run and calculate cost
+        cost = 0.0
+        for inst_nos in self._seq2seq_batches(range(len(inputs)), ratings):
+
+            fd = {}
+            self._add_inputs_to_feed_dict(fd,
+                                          inputs_hyp=hyps[inst_nos],
+                                          inputs_daclassif_trg=das[inst_nos])
+            cost += self.session.run([self.daclassif_cost], feed_dict=fd)[0]
+        return cost
+
+    def _print_daclassif_pass_stats(self, pass_no, time, pass_cost):
+        log_info('PASS %03d: duration %s, cost %f' % (pass_no, str(time), pass_cost))
+
+    def _print_daclassif_validation_stats(self, pass_no, pass_cost):
+        log_info('PASS %03d: DA classification validation cost: %f' % (pass_no, pass_cost))
