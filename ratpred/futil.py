@@ -14,7 +14,8 @@ from tgen.futil import tokenize
 from tgen.delex import delex_sent
 
 
-def read_data(filename, target_col, das_type='cambridge', delex_slots=set(), delex_slot_names=False):
+def read_data(filename, target_col, das_type='cambridge',
+              delex_slots=set(), delex_slot_names=False, delex_das=False):
     data = pd.read_csv(filename, sep=b"\t", encoding='UTF-8')
 
     # force data type to string if the data set doesn't contain human references
@@ -31,6 +32,9 @@ def read_data(filename, target_col, das_type='cambridge', delex_slots=set(), del
                 for sent in data['mr']]
     else:
         das = [DA.parse_cambridge_da(da) for da in data['mr']]
+        if delex_das:
+            das = [da.get_delexicalized(delex_slots) for da in das]
+
     texts_ref = [[(tok, None) for tok in preprocess_sent(da, sent)]
                  for da, sent in zip(das, data['orig_ref'])]
     texts_hyp = [[(tok, None) for tok in preprocess_sent(da, sent)]

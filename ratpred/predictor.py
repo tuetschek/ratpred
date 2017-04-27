@@ -91,6 +91,7 @@ class RatingPredictor(TFModel):
         if self.delex_slots:
             self.delex_slots = set(self.delex_slots.split(','))
         self.delex_slot_names = cfg.get('delex_slot_names', False)
+        self.delex_das = cfg.get('delex_das', False)
 
         self.use_seq2seq = cfg.get('use_seq2seq', False)
         self.seq2seq_pretrain_passes = cfg.get('seq2seq_pretrain_passes', 0)
@@ -196,7 +197,7 @@ class RatingPredictor(TFModel):
         """Load a data file, return inputs and targets."""
         return read_data(data_file, self.target_col,
                          'text' if self.da_enc == 'token' else 'cambridge',
-                         self.delex_slots, self.delex_slot_names)
+                         self.delex_slots, self.delex_slot_names, self.delex_das)
 
     def _seq2seq_pretrain(self, model_fname=None):
 
