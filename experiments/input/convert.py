@@ -294,6 +294,11 @@ def convert(args):
     if args.devtest_crit:
         parts = [train_part] + parts
 
+    # prepare output directory
+    if not os.path.isdir(args.output_dir):
+        log_info("Directory %s not found, creating..." % args.output_dir)
+        os.mkdir(args.output_dir)
+
     if args.cv:  # for cross-validation, compile the data, repeating the parts with a shift
         cv_parts = []
         cv_labels = []
@@ -310,16 +315,12 @@ def convert(args):
     else:
         parts[0] = add_fake_data(parts[0], fake_data_refs, 'S' in args.create_fake_data)
 
-    if not os.path.isdir(args.output_dir):
-        log_info("Directory %s not found, creating..." % args.output_dir)
-        os.mkdir(args.output_dir)
-
     # mark down the configuration
     with codecs.open(os.path.join(args.output_dir, 'config'), 'wb', encoding='UTF-8') as fh:
         fh.write(pprint.pformat(vars(args), indent=4, width=100))
 
+    # write the output
     for label, part in zip(labels, parts):
-        # write the output
         log_info("Writing part %s (size %d)..." % (label, len(part)))
         part.to_csv(os.path.join(args.output_dir, label + '.tsv'),
                     sep=b"\t", index=False, encoding='utf-8', columns=sorted(part.columns))
