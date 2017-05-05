@@ -150,6 +150,9 @@ class RatingPredictor(TFModel):
             data['da_embs'] = self.da_embs
             data['da_dict_size'] = self.da_dict_size
             data['da_input_shape'] = self.da_input_shape
+        if self.daclassif_pretrain_passes:
+            data['daclassif_vect'] = self.daclassif_vect
+            data['daclassif_feats'] = self.daclassif_feats
         return data
 
     def _save_checkpoint(self, top_cost, iter_no, cost, model_fname=None):
@@ -441,6 +444,14 @@ class RatingPredictor(TFModel):
         if self.da_enc:
             self.da_dict_size = self.da_embs.init_dict(self.train_das)
 
+        # initialize DAs to binary vectors conversion if pretraining by DA classification
+        if self.daclassif_pretrain_passes:
+            self.daclassif_feats = Features(['dat: dat_presence', 'svp: svp_presence'])
+            self.daclassif_vect = DictVectorizer(sparse=False, binarize_numeric=True)
+            self.daclassif_y = [self.daclassif_feats.get_features(None, {'da': da})
+                                for da in self.train_das]
+            self.daclassif_y = self.daclassif_vect.fit_transform(self.daclassif_y)
+
         # convert training data to indexes
         if self.hyp_enc:
             self.X_hyp = np.array([self.embs.get_embeddings(sent) for sent in self.train_hyps])
@@ -673,13 +684,6 @@ class RatingPredictor(TFModel):
         self._build_final_classifier(last_outs_and_states)
 
     def _build_da_classifier(self, final_state):
-
-        # data conversion (DAs to binary vectors)
-        self.daclassif_feats = Features(['dat: dat_presence', 'svp: svp_presence'])
-        self.daclassif_vect = DictVectorizer(sparse=False, binarize_numeric=True)
-        self.daclassif_y = [self.daclassif_feats.get_features(None, {'da': da})
-                            for da in self.train_das]
-        self.daclassif_y = self.daclassif_vect.fit_transform(self.daclassif_y)
 
         num_da_classes = len(self.daclassif_vect.get_feature_names())
         log_info('Number of DA classification classes: %d.' % num_da_classes)
