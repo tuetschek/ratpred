@@ -30,7 +30,7 @@ config = {
           #'delex_slots': 'name,postcode,address,near,area,phone,addr,count',
           'delex_slots': 'count,addr,area,food,price,phone,near,pricerange,postcode,address,eattype,type,price_range,good_for_meal,name',
           'delex_slot_names': False,
-          'delex_das': False,
+          'delex_das': True,
           'reuse_embeddings': False,
           'char_embs': False,
           #'word2vec_embs': 'trainable',
