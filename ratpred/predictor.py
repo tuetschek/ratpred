@@ -169,7 +169,8 @@ class RatingPredictor(TFModel):
         # once in a while, save current best checkpoint to disk
         if (model_fname and
                 (iter_no > self.disk_store_min_pass) and
-                (iter_no - self.disk_stored_pass >= self.disk_store_freq)):
+                (iter_no - self.disk_stored_pass >= self.disk_store_freq) and
+                (self.checkpoint_pass > self.disk_stored_pass)):
             log_info('Storing last checkpoint to disk...')
             with file_stream(model_fname, 'wb', encoding=None) as fh:
                 settings, params = self.checkpoint
