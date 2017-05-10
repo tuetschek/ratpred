@@ -132,7 +132,7 @@ printgit:
 
 prepare_dir:
 	# create the experiment directory, print description and git version
-	echo "PREPARE DIR" $(TRY_DIR) $(CV_NUM)
+	echo "PREPARE DIR" $(TRY_DIR) $(CV_NUM) $(SEED)
 	mkdir -p $(TRY_DIR)
 	CONFIG=$(CONFIG) ; \
 	[[ -n "$(DEBUG)" || -n "$(DEBUG_TEST)" ]] && DEBUG_SETTING=-d ; \
@@ -185,13 +185,22 @@ score:
 	$(AVERAGE_SCORES) $(TRY_DIR)/R.*test.o* | tee $(TRY_DIR)/test.log.txt
 
 train: RUN_NAME := train
-train: prepare_dir
 train:
-	# copy needed files (to ensure replication), then run the experiment
+	make prepare_train_data TRY_DIR=$(TRY_DIR) EVAL_TEST=$(EVAL_TEST) SEED=$(SEED) CV_NUM=$(CV_NUM)
+	make train_process TRY_DIR=$(TRY_DIR) TRY_NUM=$(TRY_NUM) EVAL_TEST=$(EVAL_TEST) SEED=$(SEED) CV_NUM=$(CV_NUM) \
+	    TRAIN_PORTION=$(TRAIN_PORTION) DEBUG_LOG_TRAIN=$(DEBUG_LOG_TRAIN)
+
+prepare_train_data: prepare_dir
+prepare_train_data:
 	cp $(CONFIG) $(TRY_DIR)/config.py
 	cp $(TRAIN_DATA) $(TRY_DIR)/train.tsv
 	if [[ -n "$(EVAL_TEST)" ]]; then \
 		cp $(VALID_DATA) $(TRY_DIR)/devel.tsv ; \
+	fi
+
+train_process: RUN_NAME := train
+train_process:
+	if [[ -n "$(EVAL_TEST)" ]]; then \
 		VALID_DATA_SPEC="-v \"$(TRY_DIR)/devel.tsv\""; \
 	fi; \
 	$(QSUBMIT) '$(ACTIVATE); \
