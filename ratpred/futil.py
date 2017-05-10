@@ -7,7 +7,6 @@ TODO
 
 from __future__ import unicode_literals
 import pandas as pd
-import numpy as np
 
 from tgen.data import DA
 from tgen.futil import tokenize
@@ -27,9 +26,9 @@ def read_data(filename, target_col, das_type='cambridge',
             return delex_sent(da, sent, delex_slots, not delex_slot_names, delex_slot_names)[0]
         return sent
 
-    if das_type == 'text':
-        das = [[(tok, None) for tok in preprocess_data(None, sent)]
-                for sent in data['mr']]
+    if das_type == 'text':  # for MT output classification
+        das = [[(tok, None) for tok in preprocess_sent(None, sent)]
+               for sent in data['mr']]
     else:
         das = [DA.parse_cambridge_da(da) for da in data['mr']]
         if delex_das:
@@ -54,7 +53,7 @@ def read_data(filename, target_col, das_type='cambridge',
 
 
 def write_outputs(filename, inputs, raw_targets, targets, raw_outputs, outputs):
-    das = [inp[0] for inp in inputs]
+    das = [inp[0].to_cambridge_da_string() for inp in inputs]
     input_refs = [" ".join([tok for tok, _ in inp[1]]) for inp in inputs]
     input_hyps = [" ".join([tok for tok, _ in inp[2]]) for inp in inputs]
     outputs = [float(output) for output in outputs]
@@ -66,3 +65,19 @@ def write_outputs(filename, inputs, raw_targets, targets, raw_outputs, outputs):
                        'system_rating_raw': raw_outputs,
                        'system_rating': outputs})
     df.to_csv(filename, sep=b"\t", index=False, encoding='UTF-8')
+
+
+def read_outputs(filename):
+    data = pd.read_csv(filename, sep=b"\t", encoding='UTF-8')
+    das = [DA.parse_cambridge_da(da) for da in data['mr']]
+    # force string data type for empty human references
+    data['orig_ref'] = data['orig_ref'].apply(lambda x: '' if not isinstance(x, basestring) else x)
+    texts_ref = [[(tok, None) for tok in tokenize(sent.lower()).split(' ')]
+                 for sent in data['orig_ref']]
+    texts_hyp = [[(tok, None) for tok in tokenize(sent.lower()).split(' ')]
+                 for sent in data['system_output']]
+    inputs = [(da, text_ref, text_hyp) for
+              da, text_ref, text_hyp in zip(das, texts_ref, texts_hyp)]
+    return (inputs,
+            list(data['human_rating_raw']), list(data['human_rating']),
+            list(data['system_rating_raw']), list(data['system_rating']))

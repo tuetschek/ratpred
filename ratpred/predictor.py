@@ -15,7 +15,6 @@ import math
 import os.path
 
 import numpy as np
-import scipy.stats
 import tensorflow as tf
 
 from pytreex.core.util import file_stream
@@ -29,9 +28,10 @@ from tgen.ml import DictVectorizer
 
 import tgen.externals.seq2seq as tf06s2s
 
-from ratpred.futil import read_data, write_outputs
+from ratpred.futil import read_data
 from ratpred.embeddings import Word2VecEmbeddingExtract, CharEmbeddingExtract
 from ratpred.tb_logging import DummyTensorBoardLogger, TensorBoardLogger
+from ratpred.eval import Evaluator
 
 
 def sigmoid(nums):
@@ -990,35 +990,18 @@ class RatingPredictor(TFModel):
             das, input_refs, input_hyps = inputs[:3]  # ignore is_real indicators
         else:
             das, input_refs, input_hyps = self._divide_inputs(inputs)
-        dists = []
-        correct = 0
-        raw_ratings = []
-        ratings = []
-        targets = []
-        for da, input_ref, input_hyp, target in zip(das, input_refs, input_hyps, raw_targets):
-            rating = self.rate([input_hyp] if self.hyp_enc else None,
-                               [input_ref] if self.ref_enc else None,
-                               [da] if self.da_enc else None)
-            raw_ratings.append(rating)
-            dists.append(abs(rating - target))  # calculate distance on raw ratings & targets
-            rating = self._round_rating(rating)  # calculate accuracy & correlation on rounded
-            target = self._round_rating(target)
-            ratings.append(rating)
-            targets.append(target)
-            if rating == target:
-                correct += 1
-        pearson, pearson_pv = scipy.stats.pearsonr(targets, ratings)
-        spearman, spearman_pv = scipy.stats.spearmanr(targets, ratings)
+        evaler = Evaluator()
+        for da, input_ref, input_hyp, raw_target in zip(das, input_refs, input_hyps, raw_targets):
+            raw_rating = self.rate([input_hyp] if self.hyp_enc else None,
+                                   [input_ref] if self.ref_enc else None,
+                                   [da] if self.da_enc else None)
+            rating = self._round_rating(raw_rating)
+            target = self._round_rating(raw_target)
+            evaler.append((da, input_ref, input_hyp),
+                          raw_target, target, raw_rating, rating)
         if output_file:
-            write_outputs(output_file, inputs, raw_targets, targets, raw_ratings, ratings)
-        return {'dist_total': np.sum(dists),
-                'dist_avg': np.mean(dists),
-                'dist_stddev': np.std(dists),
-                'accuracy': float(correct) / len(input_hyps),
-                'pearson': pearson,
-                'pearson_pv': pearson_pv,
-                'spearman': spearman,
-                'spearman_pv': spearman_pv}
+            evaler.write_tsv(output_file)
+        return evaler.get_stats()
 
     def _daclassif_training_pass(self, pass_no):
         pass_start_time = time.time()
