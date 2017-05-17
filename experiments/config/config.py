@@ -19,6 +19,7 @@ config = {
           'validation_freq': 1,
           'validation_weights': {
               'pearson': -100.0,
+              'spearman': -100.0,
               'dist_avg': 0.1,
               'cost_avg': 0.1,
           },
