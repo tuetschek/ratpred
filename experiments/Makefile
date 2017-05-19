@@ -22,7 +22,7 @@ endif
 ifdef DEBUG_TEST
   DEBUG_LOG_TEST = -d $(TRY_DIR)/test.debug-log.txt
 endif
-AVERAGE_SCORES = ../util/average_scores.pl
+OVERALL_SCORES = ../util/overall_scores.py
 GREP_SCORES = ../util/grep_scores.pl --dist-range=2
 DESC_EXP = ../util/describe_experiment.pl
 NUM_EXP = 20  # number of experiments to list in `make desc'
@@ -174,7 +174,7 @@ cv_score-%:
 	make cv_score TRY_DIR=$(TRY_DIR) TRY_NUM=$(TRY_NUM)
 
 cv_score:
-	$(AVERAGE_SCORES) $(TRY_DIR)/*/R.*test.o* | tee $(TRY_DIR)/test.log.txt
+	$(OVERALL_SCORES) -s $(TRY_DIR) predicted.tsv 2>&1 | tee $(TRY_DIR)/test.log.txt
 
 score-%:
 	$(eval TRY_DIR := $(shell ls -d $(RUNS_DIR)/$**))
@@ -182,7 +182,7 @@ score-%:
 	make score TRY_DIR=$(TRY_DIR) TRY_NUM=$(TRY_NUM)
 
 score:
-	$(AVERAGE_SCORES) $(TRY_DIR)/R.*test.o* | tee $(TRY_DIR)/test.log.txt
+	$(OVERALL_SCORES) $(TRY_DIR)/predicted.tsv 2>&1 | tee $(TRY_DIR)/test.log.txt
 
 train: RUN_NAME := train
 train:
