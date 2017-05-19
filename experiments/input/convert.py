@@ -276,14 +276,23 @@ def convert(args):
     if args.devtest_crit:
         # select dev/test data based on a criterion
         crit_col, crit_val = args.devtest_crit.split('=')
-        train_part = data[data[crit_col] != crit_val]  # training data is everything else
-        train_part = train_part.reset_index()
-        data = data[data[crit_col] == crit_val]  # dev+test data have the criterion
-        data = data.reset_index()
-        sizes = sizes[1:]  # training size does not matter (everything not fulfilling the criterion)
-        if args.add_valid:  # add a few validation examples into training data
-            train_part = pd.concat((train_part, data[0:args.add_valid]))
-            data = data[args.add_valid:]
+        nocrit_data = data[data[crit_col] != crit_val]  # training data is everything else
+        nocrit_data = nocrit_data.reset_index()
+        crit_data = data[data[crit_col] == crit_val]  # dev+test data have the criterion
+        crit_data = crit_data.reset_index()
+        if args.add_valid:  # add a little bit of crit data to non-crit data
+            if args.remove_nocrit:  # completely remove the non-crit data, leaving only the crit bit
+                nocrit_data = crit_data[0:args.add_valid]
+            else:
+                nocrit_data = pd.concat((nocrit_data, crit_data[0:args.add_valid]))
+            crit_data = crit_data[args.add_valid:]
+            crit_data = crit_data.reset_index()
+        if args.crit_test_only:
+            sizes = sizes[:-1]  # split just train+dev by ratio
+            data = nocrit_data
+        else:
+            sizes = sizes[1:]  # split just dev+test by ratio
+            data = crit_data
 
     if args.cv:  # for cross-validation, just pre-split the data to small parts (to be compiled later)
         cv_sizes = sizes
@@ -291,8 +300,11 @@ def convert(args):
 
     parts = get_data_parts(data, sizes)
 
-    if args.devtest_crit:
-        parts = [train_part] + parts
+    if args.devtest_crit:  # add the singled-out criteria part back to the mix
+        if args.crit_test_only:
+            parts = parts + [crit_data]  # singled-out part is the test set
+        else:
+            parts = [nocrit_data] + parts  # singled-out part is the train set
 
     # prepare output directory
     if not os.path.isdir(args.output_dir):
@@ -331,8 +343,12 @@ if __name__ == '__main__':
     ap = ArgumentParser(description='Prepare and split data for the rating prediction experiment.')
     ap.add_argument('-d', '--devtest-crit', type=str, default=None,
                     help='A criterion (column=val) for selecting devel/test examples')
+    ap.add_argument('-t', '--crit-test-only', action='store_true',
+                    help='Only use the criterion for test, not dev data')
     ap.add_argument('-a', '--add-valid', type=int, default=0,
                     help='Add some validation data to train (use with --devtest-crit)')
+    ap.add_argument('-R', '--remove-nocrit', action='store_true',
+                    help='Remove training data with fulfilling the criterion')
     ap.add_argument('-r', '--ratio', type=str, default='3:1:1',
                     help='Train-devel-test split ratio')
     ap.add_argument('-l', '--labels', type=str, default='train:devel:test',
