@@ -195,8 +195,22 @@ def get_data_parts(data, sizes):
     return parts
 
 
-def add_fake_data(train_data, real_data, add_from_train=False):
-    if add_from_train:
+def add_fake_data(train_data, real_data, add_from=''):
+
+    if 'T' in add_from:
+        log_info("Will create fake data from human references in training data.")
+        human_data = train_data.copy()
+        refs = human_data['orig_ref'].str.split(' <\|> ').apply(pd.Series, 1).stack()
+        refs.index = refs.index.droplevel(-1)
+        refs.name = 'orig_ref'
+        del human_data['orig_ref']
+        human_data = human_data.join(refs).reset_index()
+        human_data = human_data.groupby(['mr', 'orig_ref'],  # delete scores
+                                        as_index=False).agg(lambda vals: None)
+        real_data = pd.concat((real_data, human_data))
+        train_data['orig_ref'] = ''
+
+    if 'S' in add_from:
         log_info("Will create fake data from system outputs in training data.")
         # we keep the scores here, but use the outputs as orig references
         sys_outs = train_data.copy()
@@ -245,18 +259,18 @@ def convert(args):
                                     data.groupby(['mr', 'orig_ref'],  # delete scores
                                                  as_index=False).agg(lambda vals: None)))
 
-    if args.delete_refs:
+    if args.delete_refs and 'T' not in args.create_fake_data:
         log_info("Deleting human references...")
         group_cols = list(set(data.columns) - set(['orig_ref']))
         data = data.groupby(group_cols, as_index=False).agg(lambda vals: "")
-        # TODO what?? fake_data['orig_ref'] = fake_data['orig_ref'].apply(lambda vals: "")
 
     if args.median:
         log_info("Computing medians...")
         group_cols = list(set(data.columns) - set(['informativeness', 'naturalness',
                                                   'quality', 'judge', 'judge_id']))
         data = data.groupby(group_cols, as_index=False).median()
-    if args.concat_refs:
+
+    if args.concat_refs or 'T' in args.create_fake_data:
         log_info("Concatenating all references for the same outputs...")
         group_cols = list(set(data.columns) - set(['orig_ref']))
         data = data.groupby(group_cols, as_index=False).agg(lambda vals: ' <|> '.join(vals))
@@ -317,7 +331,7 @@ def convert(args):
         for offset in xrange(len(sizes)):
             os.mkdir(os.path.join(args.output_dir, 'cv%02d' % offset))
             cur_parts = parts[offset:] + parts[:offset]
-            cur_parts[0] = add_fake_data(cur_parts[0], fake_data_refs, 'S' in args.create_fake_data)
+            cur_parts[0] = add_fake_data(cur_parts[0], fake_data_refs, args.create_fake_data)
             for cv_size, cv_label in zip(cv_sizes, labels):
                 cv_parts.append(pd.concat(cur_parts[:cv_size]))
                 cur_parts = cur_parts[cv_size:]
@@ -325,7 +339,7 @@ def convert(args):
         labels = cv_labels
         parts = cv_parts
     else:
-        parts[0] = add_fake_data(parts[0], fake_data_refs, 'S' in args.create_fake_data)
+        parts[0] = add_fake_data(parts[0], fake_data_refs, args.create_fake_data)
 
     # mark down the configuration
     with codecs.open(os.path.join(args.output_dir, 'config'), 'wb', encoding='UTF-8') as fh:
@@ -368,7 +382,8 @@ if __name__ == '__main__':
                     help='Adding fake data from MRs + references in an additional file')
     ap.add_argument('-f', '--create-fake-data', type=str, default='',
                     help='Adding fake data from MRs + references in training data. ' +
-                    '(values: H/S/HS, where H = human refs, S = system outputs)')
+                    '(values: H/T/S/TS/HS, where H = all human refs, T = training human refs, ' +
+                    'S = training system outputs). Note that T implies -D.')
     ap.add_argument('-H', '--hter-score', action='store_true',
                     help='Use HTER score when generating the fake data, instead of NLG scores')
     ap.add_argument('input_file', type=str, help='Path to the input file')
