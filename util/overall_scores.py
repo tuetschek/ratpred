@@ -29,6 +29,7 @@ def process_data(args):
     log_info("Distance: %.3f (avg: %.3f, std: %.3f)" % (results['dist_total'],
                                                         results['dist_avg'],
                                                         results['dist_stddev']))
+    log_info("MAE: %.3f, RMSE: %.3f" % (results['mae'], results['rmse']))
     log_info("Accuracy: %.3f" % results['accuracy'])
     log_info("Pearson correlation: %.3f (p-value %.3f)" %
              (results['pearson'], results['pearson_pv']))

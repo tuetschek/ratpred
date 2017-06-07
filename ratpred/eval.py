@@ -23,6 +23,8 @@ class Evaluator(object):
         self.raw_ratings = []
         self.ratings = []
         self.dists = []
+        self.aes = []  # absolute error
+        self.sqes = []  # square error
         self.correct = 0
 
     def append(self, inp, raw_trg, trg, raw_rat, rat):
@@ -33,6 +35,8 @@ class Evaluator(object):
         self.raw_targets.append(raw_trg)
         self.targets.append(trg)
         self.dists.append(abs(raw_rat - raw_trg))
+        self.aes.append(abs(rat - trg))
+        self.sqes.append((rat - trg) ** 2)
         self.correct += 1 if trg == rat else 0
 
     def write_tsv(self, fname):
@@ -47,6 +51,8 @@ class Evaluator(object):
         return {'dist_total': np.sum(self.dists),
                 'dist_avg': np.mean(self.dists),
                 'dist_stddev': np.std(self.dists),
+                'mae': np.mean(self.aes),
+                'rmse': np.sqrt(np.mean(self.sqes)),
                 'accuracy': float(self.correct) / len(self.inputs),
                 'pearson': pearson,
                 'pearson_pv': pearson_pv,
