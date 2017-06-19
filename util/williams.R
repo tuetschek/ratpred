@@ -1,3 +1,6 @@
+# Copied from
+# https://github.com/ygraham/nlp-williams
+# to avoid dependencies.
 
 # Copyright 2015 Yvette Graham 
 # 
