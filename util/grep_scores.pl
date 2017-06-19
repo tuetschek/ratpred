@@ -39,14 +39,10 @@ my ( $pr, $lists, $bleu ) = ( '', '', '' );
 while ( my $line = <$fh> ) {
     chomp $line;
 
-    if ( $line =~ /(Distance:)/i ) {
-        my ($dist, $std) = ($line =~ /.*avg: ([0-9.]+)(?:, std: ([0-9.]+))?/);
-        $std //= '?';
-        $pr = rg( 0, $dist_range , $dist, 1 ) . "D $dist/$std\e[0m  ";
-    }
-    if ( $line =~ /(Accuracy:)/i ) {
-        $line =~ s/.*Accuracy: //i;
-        $pr .= rg( 0, 1 , $line ) . "A $line\e[0m  ";
+    if ( $line =~ /(MAE:.*RMSE:)/i ) {
+        my ($mae, $rmse) = ($line =~ /MAE: ([0-9.]+), RMSE: ([0-9.]+)/);
+        $pr = rg( 0, $dist_range , $mae, 1 ) . "M $mae\e[0m  ";
+        $pr .= rg( 0, $dist_range , $rmse, 1 ) . "R $rmse\e[0m  ";
     }
     if ( $line =~ /(Pearson|Spearman) correlation:/i ) {
         my $letter = substr($1, 0, 1);
