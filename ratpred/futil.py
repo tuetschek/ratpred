@@ -31,13 +31,15 @@ def read_data(filename, target_col, das_type='cambridge',
                for sent in data['mr']]
     else:
         das = [DA.parse_cambridge_da(da) for da in data['mr']]
-        if delex_das:
-            das = [da.get_delexicalized(delex_slots) for da in das]
 
     texts_ref = [[(tok, None) for tok in preprocess_sent(da, sent)]
                  for da, sent in zip(das, data['orig_ref'])]
     texts_hyp = [[(tok, None) for tok in preprocess_sent(da, sent)]
                  for da, sent in zip(das, data['system_ref'])]
+
+    # DA delexicalization must take place after text delexicalization
+    if das_type != 'text' and delex_das:
+        das = [da.get_delexicalized(delex_slots) for da in das]
 
     if 'is_real' in data.columns:
         real_indics = [0 if indic == 0 else 1 for indic in data['is_real']]
