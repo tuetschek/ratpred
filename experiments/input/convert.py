@@ -264,16 +264,18 @@ def convert(args):
         group_cols = list(set(data.columns) - set(['orig_ref']))
         data = data.groupby(group_cols, as_index=False).agg(lambda vals: "")
 
-    if args.median:
-        log_info("Computing medians...")
-        group_cols = list(set(data.columns) - set(['informativeness', 'naturalness',
-                                                  'quality', 'judge', 'judge_id']))
-        data = data.groupby(group_cols, as_index=False).median()
-
     if args.concat_refs or 'T' in args.create_fake_data:
         log_info("Concatenating all references for the same outputs...")
         group_cols = list(set(data.columns) - set(['orig_ref']))
         data = data.groupby(group_cols, as_index=False).agg(lambda vals: ' <|> '.join(vals))
+
+    if args.median:
+        log_info("Computing medians...")
+        group_cols = list(set(data.columns) - set(['informativeness', 'naturalness',
+                                                  'quality', 'judge', 'judge_id']))
+        group_cols.remove('orig_ref')  # move references column at the end of grouping
+        group_cols.append('orig_ref')  # s.t. the presence of refs does not influence order
+        data = data.groupby(group_cols, as_index=False).median()
 
     # shuffle, but keep identical instances (just with different human refs) together
     if args.shuffle:
