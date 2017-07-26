@@ -9,13 +9,16 @@ import numpy as np
 import scipy.stats
 import os
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def main(args):
+    print
+    print args.pred_file_a, args.pred_file_b
     data_a = pd.DataFrame.from_csv(args.pred_file_a, index_col=None, sep='\t')
     data_b = pd.DataFrame.from_csv(args.pred_file_b, index_col=None, sep='\t')
     assert(len(data_a) == len(data_b))
-    data_a = data_a.sort_values(by=['mr', 'system_output']).reset_index()
-    data_b = data_b.sort_values(by=['mr', 'system_output']).reset_index()
+    data_a = data_a.sort_values(by=['mr', 'system_output', 'human_rating']).reset_index()
+    data_b = data_b.sort_values(by=['mr', 'system_output', 'human_rating']).reset_index()
     ref = np.array(data_a['human_rating'])
     pred_a = np.array(data_a['system_rating'])
     pred_b = np.array(data_b['system_rating'])
@@ -25,8 +28,10 @@ def main(args):
         c23, _ = corr(pred_a, pred_b)
         print corr.__name__, c12, c13, c23, len(data_a)
         if c12 < c13:  # swap that 1st is always bigger
+            print 'SWAPPING A-B'
             c12, c13 = c13, c12
-        os.system("R --no-save --args %f %f %f %d < williams.R | grep '^P-value'" % (c12, c13, c23, len(data_a)))
+        os.system("R --no-save --args %f %f %f %d < %s/williams.R | grep '^P-value'" %
+                  (c12, c13, c23, len(data_a), SCRIPT_DIR))
 
 
 if __name__ == '__main__':
