@@ -301,6 +301,9 @@ def convert(args):
                 nocrit_data = pd.concat((nocrit_data, crit_data[0:args.add_valid]))
             crit_data = crit_data[args.add_valid:]
             crit_data = crit_data.reset_index()
+        if args.discard_test:  # just discard some of the test set (do not add anywhere)
+            crit_data = crit_data[args.discard_test:]
+            crit_data = crit_data.reset_index()
         if args.crit_test_only:
             sizes = sizes[:-1]  # split just train+dev by ratio
             data = nocrit_data
@@ -359,6 +362,8 @@ if __name__ == '__main__':
                     help='A criterion (column=val) for selecting devel/test examples')
     ap.add_argument('-t', '--crit-test-only', action='store_true',
                     help='Only use the criterion for test, not dev data')
+    ap.add_argument('-T', '--discard-test', type=int, default=0,
+                    help='Discard first N test instances (do as if they\'re added to dev/train)')
     ap.add_argument('-a', '--add-valid', type=int, default=0,
                     help='Add some validation data to train (use with --devtest-crit)')
     ap.add_argument('-R', '--remove-nocrit', action='store_true',
