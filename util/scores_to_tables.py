@@ -27,5 +27,5 @@ def main(args):
 if __name__ == '__main__':
     ap = ArgumentParser(description='Grab scores from logs to build LaTeX tables')
     ap.add_argument('--width', '-w', default=1, type=int, help='Table width')
-    ap.add_argument('runs', nargs='+')
+    ap.add_argument('runs', nargs='+', help='Experiment numbers')
     main(ap.parse_args())
