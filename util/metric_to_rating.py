@@ -21,7 +21,6 @@ def quantize(col, num_vals):
 def main(args):
     data = pd.DataFrame.from_csv(args.input_file, index_col=None, sep=b"\t", encoding="UTF-8")
     dd = read_data(args.input_file, 'quality', delex_slots=set('count,addr,area,food,price,phone,near,pricerange,postcode,address,eattype,type,price_range,good_for_meal,name'.split(',')), delex_das=True)
-    data['system_output_lex'] = data['system_output']
     data['mr_lex'] = data['mr']
     data['system_output'] = [' '.join([tok for tok, _ in inst[2]]) for inst in dd[0]]
     data['mr'] = [inst[0].to_cambridge_da_string() for inst in dd[0]]
@@ -32,9 +31,7 @@ def main(args):
         data['average'] = np.mean(avg_data['quality'])
     else:
         data['average'] = np.mean(data['quality'])
-    data = data[[args.metric, 'quality', 'mr', 'orig_ref', 'system_ref']]
-    data['system_output'] = data['system_ref']
-    del data['system_ref']
+    data = data[[args.metric, 'quality', 'mr', 'orig_ref', 'system_output']]
     data['human_rating'] = data['quality']
     del data['quality']
     data['human_rating_raw'] = data['human_rating']
@@ -68,7 +65,7 @@ if __name__ == '__main__':
                         + 'to compute correlations comparable to our system\'s predictions')
     ap.add_argument('--average', '-a', nargs='+', help='File to use to compute average metric')
     ap.add_argument('--normalize', '-n', action='store_true', help='Normalize metric to 0-1 range?')
-    ap.add_argument('--quantize', '-q', default="1-6:0.5", help='Quantization parameters (range "1-6:0.5" step)')
+    ap.add_argument('--quantize', '-q', default="1-6:0.5", help='Quantization parameters (range "1-6:0.5" step). Implies normalization!')
     ap.add_argument('metric', type=str, help='Metric name')
     ap.add_argument('input_file', type=str, help='Input TSV file with metrics')
     ap.add_argument('output_file', type=str, help='Output TSV file with metric as predicted rating')
