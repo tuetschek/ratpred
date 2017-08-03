@@ -5,28 +5,26 @@
 import os
 from itertools import product
 
-# SETTINGS
-settings = [[('-D', 'noref'),
-             #('-c', 'concref')
+# All configurations to generate
+# - Carthesian product is taken
+# - tuples: 1st part = convert.py parameters to apply, 2nd part = part of target set name
+#
+settings = [[('-D', 'noref'),  # not using references when rating (only for data synthesis)
             ],
             [('', ''),
-             ('-d dataset=SFHOT', 'xdom'),
-             ('-d system=LOLS', 'xsys'),
-             ('-d dataset=SFHOT -t -T 200', 'xdomT'),
-             ('-d system=LOLS -t -T 200', 'xsysT'),
-             ('-d dataset=SFHOT -a 100 -r 0:100:675', 'xdomA'),
-             ('-d system=LOLS -a 100 -r 0:100:981', 'xsysA'),
-             ('-d dataset=SFHOT -a 100 -r 0:100:675 -R', 'xdomO'),
-             ('-d system=LOLS -a 100 -r 0:100:981 -R', 'xsysO'),
+             ('-d dataset=SFHOT -a 100 -r 0:100:675 -R', 'xdomO'), # C1 - domain
+             ('-d system=LOLS -a 100 -r 0:100:981 -R', 'xsysO'), # C1 - system
+             ('-d dataset=SFHOT -t -T 200', 'xdomT'),  # C2 - domain
+             ('-d system=LOLS -t -T 200', 'xsysT'),  # C2 - system
+             ('-d dataset=SFHOT -a 100 -r 0:100:675', 'xdomA'),  # C3 - domain
+             ('-d system=LOLS -a 100 -r 0:100:981', 'xsysA'), # C3 - system
             ],
-            [('', ''),
-             ('-f H', 'fh'),
-             ('-f S', 'fs'),
-             ('-f TS', 'fts'),
-             ('-f HS', 'fhs'),
-             ('-f TS -F nlg-datasets/sfxhotel+sfxrest-train.tsv', 'Ftonly'),
-             ('-f HS -F nlg-datasets/sfxhotel+sfxrest-train.tsv', 'Ftrain'),
-             ('-f HS -F nlg-datasets/bagel+sfxhotel+sfxrest-all.tsv', 'Fall')
+            [('', ''), # S1
+             ('-f H', 'fh'), # S2
+             ('-f TS', 'fts'), # S3
+             ('-f TS -F nlg-datasets/sfxhotel+sfxrest-train.tsv', 'Ftonly'), # S4
+             ('-f HS -F nlg-datasets/sfxhotel+sfxrest-train.tsv', 'Ftrain'), # S5
+             ('-f HS -F nlg-datasets/bagel+sfxhotel+sfxrest-all.tsv', 'Fall') # S6
             ]]
 
 # plain

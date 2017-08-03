@@ -7,13 +7,17 @@ SHELL = /bin/bash
 RATPRED = ../run_ratpred.py
 MEM = 4g
 CPUS = 4
+
+# XXX Replace this with your batch queue engine system command !
 QP = --engine=grun
 ifdef LOCAL
   QP = --engine=console
 endif
-QSUBMIT = qsubmit --logdir '$(TRY_DIR)' --mem $(MEM) --cores $(CPUS) --jobname R.$(TRY_NUM)$(CV_NUM)$(SEED).$(RUN_NAME) $(QP) $(QHOLD)# using OB's qsubmit script
+QSUBMIT = qsubmit --logdir '$(TRY_DIR)' --mem $(MEM) --cores $(CPUS) --jobname R.$(TRY_NUM)$(CV_NUM)$(SEED).$(RUN_NAME) $(QP) $(QHOLD)
+# XXX 
+
 TRAIN_PORTION=1.0
-ACTIVATE = echo -n # source your activate script instead
+ACTIVATE = echo -n # XXX Source your activate script instead
 
 ifdef DEBUG
   DEBUG_LOG_TRAIN = -d $(TRY_DIR)/train.debug-log.txt.gz
@@ -67,26 +71,41 @@ define HELP_MESSAGE
 Rating prediction experiments
 ================
 
+Note that running experiments using this Makefile requires a batch queuing system,
+such as Sun Grid Engine. You need to adjust your queuing engine command in 
+this Makefile code before using the commands.
+
+Experiments are stored in the "runs/" subdirectory and given consecutive
+numbers.
+
 make desc [NUM_EXP=20] [REFRESH=1]
 * List experiments with descriptions and (possibly) scores.
 * Change NUM_EXP if you need to see more than 20 latest results.
 * Refresh scores to obtain new results by setting REFRESH=1 (makes it slower).
 
-make cv_run J=[XX] D='Description'
-* Run an experiment where seq2seq
-  training is directly followed by testing generation.
+make cv_run D='Description' TRAINING_SET=toy
+* Run a full experiment where RatPred training is directly followed by 
+    testing.
+  - set TRAINING_SET to the required subdirectory path in "data/" 
+    (if the directory path contains "cv", a cross-validation experiment 
+    is launched automatically)
   - set RANDS=1 to use 5 different random seeds (and average the results)
   - set EVAL_TEST=1 to evaluate on test data instead of development data
+
+make train D='Description' TRAINING_SET=toy
+* Same as the whole experiment, but training only (no testing)
+
+make test TRAINING_SET=toy [EVAL_TEST=1]
+* Testing only (despite the name, TRAINING_SET controls the test set
+    subdirectory path in "data/")
+    - "devel.tsv" is used for testing by default, "test.tsv" if EVAL_TEST is set
 
 make score-XXX
 * Retrieve a score for run without RANDS.
 
 make cv_score-XXX
-* Retrieve a score for run with RANDS.
+* Retrieve a score for run with RANDS or cross-validation.
 ---
-
-Use LOCAL=1 if you want the job to run interactively instead
-of submitting to the cluster.
 
 Use ACTIVATE='source path/to/virtualenv/bin/activate' to run
 within a Virtualenv instead of the default Python.
@@ -145,7 +164,6 @@ prepare_dir:
 
 # Main targets
 
-# TODO do actual CV here
 cv_run: RUN_NAME := cv_run
 cv_run: prepare_dir
 cv_run:
@@ -158,7 +176,7 @@ cv_run:
 		fi; \
 		for SEED in "$${SEEDS[@]}"; do \
 			TRAIN_RUN=train ; \
-			TEST_RUN=test_cv ; \
+			TEST_RUN=test ; \
 			make $$TRAIN_RUN TRY_DIR=$(TRY_DIR)/$$CV_NUM$$SEED SEED=$$SEED TRY_NUM=$(TRY_NUM) CV_NUM=$$CV_NUM 2>&1 | tee -a $(TRY_DIR)/cv.log.txt ; \
 			JOB_NUM=`cat $(TRY_DIR)/cv.log.txt | grep '^\(Your job\|Submitted batch\|Job_ID\)' | tail -n 1 | sed 's/^\(Your job\|Submitted batch job\|Job_ID:\) \([0-9]\+\).*/\2/;' ` ; \
 			if [ -n "$$JOB_NUM" ]; then \
@@ -209,7 +227,7 @@ train_process:
 		$(TRY_DIR)/config.py $(TRY_DIR)/train.tsv \
 		$(TRY_DIR)/model.pickle.gz' 2>&1 | tee $(TRY_DIR)/train.log.txt
 
-test_cv:
+test:
 	make prepare_test_data TRY_DIR=$(TRY_DIR)
 	make test_process TRY_DIR=$(TRY_DIR) TRY_NUM=$(TRY_NUM) QP="$(QP)" QHOLD="$(QHOLD)"
 
