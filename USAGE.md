@@ -27,7 +27,7 @@ Here:
 
 * `train.csv` is the input TSV file with training data, which uses the following columns:
     * `mr` -- training meaning representations (Cambridge dialogue acts as used 
-        [in our datasets](TODO))
+        [in our datasets](https://github.com/jeknov/EMNLP_17_submission))
     * `system_ref` -- training NLG system outputs (tokenized texts)
     * `quality` -- the training human quality ratings (depending on the `target_col` setting 
         in the configuration file, a different column may be used as the target ratings)
@@ -59,13 +59,13 @@ Parameters:
 Preprocessing, configuration, and experiment management for our experiments used in the 
 [ICML-LGNL paper](TODO) is stored in the [experiments/](experiments/) subdirectory.
 
-* We used our [EMNLP 2017](TODO) collection of rated NLG system outputs, which 
-    can be downloaded from [Jekaterina's GitHub page](TODO).
+* We used our [EMNLP 2017](https://arxiv.org/abs/1707.06875) collection of rated NLG system outputs, which 
+    can be downloaded from [Jekaterina's GitHub page](https://github.com/jeknov/EMNLP_17_submission).
 
 * As additional data for synthesis, we used the original sources and converted them to TSVs
     with two columns -- `mr` (the dialogue act meaning representation) and `orig_ref` with
     the corresponding human reference. You can download the sets here:
-    * [BAGEL](TODO)
+    * [BAGEL](http://farm2.user.srcf.net/research/bagel/)
     * [SFHot + SFRest](TODO)
 
 * Preprocessing and data synthesis is controlled by the 
