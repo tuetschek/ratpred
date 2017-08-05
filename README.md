@@ -17,7 +17,7 @@ Note that RatPred is highly experimental and only tested, so bugs are inevitable
 Installation and Usage
 ----------------------
 
-TBD -- will appear here shortly.
+See [USAGE.md](USAGE.md).
 
 Citing
 ------
