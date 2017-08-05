@@ -65,7 +65,7 @@ Preprocessing, configuration, and experiment management for our experiments used
     with two columns -- `mr` (the dialogue act meaning representation) and `orig_ref` with
     the corresponding human reference. You can download the sets here:
     * [BAGEL](http://farm2.user.srcf.net/research/bagel/)
-    * [SFHot + SFRest](TODO)
+    * [SFHot + SFRest](https://www.repository.cam.ac.uk/handle/1810/251304)
 
 * Preprocessing and data synthesis is controlled by the 
     [create_v3.py](experiments/input/create_v3.py) script. This is a wrapper around the main
