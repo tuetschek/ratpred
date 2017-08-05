@@ -5,9 +5,7 @@ RatPred Installation and Usage
 Installation
 ------------
 
-RatPred requires Python 2.7 to work.
-
-* TODO needed libraries
+RatPred requires Python 2.7 and [TGen](https://github.com/UFAL-DSG/tgen) to work. TGen must be installed in [Revision f5639b1](https://github.com/UFAL-DSG/tgen/tree/f5639b1eda2aee37fc3a452e8fbe577af7a8cfd1) for the current version of RatPred to work (you can [download it as a ZIP](https://github.com/UFAL-DSG/tgen/archive/f5639b1eda2aee37fc3a452e8fbe577af7a8cfd1.zip) instead of cloning TGen). We recommend using a [virtualenv](https://virtualenv.pypa.io/en/stable/) for installation.
 
 
 Usage
@@ -61,6 +59,7 @@ Preprocessing, configuration, and experiment management for our experiments used
 
 * We used our [EMNLP 2017](https://arxiv.org/abs/1707.06875) collection of rated NLG system outputs, which 
     can be downloaded from [Jekaterina's GitHub page](https://github.com/jeknov/EMNLP_17_submission).
+    * use the [emnlp_data_individual_hum_scores.csv](https://github.com/jeknov/EMNLP_17_submission/raw/master/emnlp_data_individual_hum_scores.csv) file as the source for conversion (medians are computed internally during conversion).
 
 * As additional data for synthesis, we used the original sources and converted them to TSVs
     with two columns -- `mr` (the dialogue act meaning representation) and `orig_ref` with
