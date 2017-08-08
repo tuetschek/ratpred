@@ -10,7 +10,7 @@ a MR and an NLG system output only. Unlike most automated metrics used for NLG,
 such as BLEU or NIST, RatPred does not need human-authored reference texts.
 
 For details on the system architecture and its performance, please refer to
-our [ICML-LGNL paper](TODO).
+our [ICML-LGNL paper](https://arxiv.org/abs/1708.01759).
 
 Note that RatPred is highly experimental and only tested, so bugs are inevitable. If you find a bug, feel free to [contact me](https://github.com/tuetschek) or [open an issue](https://github.com/UFAL-DSG/ratpred/issues). 
 
@@ -22,7 +22,7 @@ See [USAGE.md](USAGE.md).
 Citing
 ------
 
-If you use or refer to RatPred, please cite [our ICML-LGNL paper](TODO):
+If you use or refer to RatPred, please cite [our ICML-LGNL paper](https://arxiv.org/abs/1708.01759):
 
 Ondřej Dušek, Jekaterina Novikova, and Verena Rieser (2017): Referenceless Quality Estimation for Natural Language Generation. In _Proceedings of the 1st Workshop on Learning to Generate Natural Language_, Sydney, Australia.
 
