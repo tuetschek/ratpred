@@ -55,7 +55,7 @@ Parameters:
 ### Our Experiments
 
 Preprocessing, configuration, and experiment management for our experiments used in the 
-[ICML-LGNL paper](TODO) is stored in the [experiments/](experiments/) subdirectory.
+[ICML-LGNL paper](https://arxiv.org/abs/1708.01759) is stored in the [experiments/](experiments/) subdirectory.
 
 * We used our [EMNLP 2017](https://arxiv.org/abs/1707.06875) collection of rated NLG system outputs, which 
     can be downloaded from [Jekaterina's GitHub page](https://github.com/jeknov/EMNLP_17_submission).
