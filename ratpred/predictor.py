@@ -531,11 +531,11 @@ class RatingPredictor(TFModel):
                                   for i in xrange(self.da_input_shape[0])]
 
             if self.cell_type.startswith('gru'):
-                self.cell = tf.nn.rnn_cell.GRUCell(self.emb_size)
+                self.cell = tf.contrib.rnn.GRUCell(self.emb_size)
             else:
-                self.cell = tf.nn.rnn_cell.BasicLSTMCell(self.emb_size)
+                self.cell = tf.contrib.rnn.BasicLSTMCell(self.emb_size)
             if self.cell_type.endswith('/2'):
-                self.cell = tf.nn.rnn_cell.MultiRNNCell([self.cell] * 2)
+                self.cell = tf.contrib.rnn.MultiRNNCell([self.cell] * 2)
 
             # build the output
             if self.use_seq2seq:
@@ -578,9 +578,9 @@ class RatingPredictor(TFModel):
         if self.dropout_keep_prob == 1.0:
             return variable
         train_mode_mask = tf.fill(tf.shape(variable)[:1], self.train_mode)
-        return tf.select(train_mode_mask,
-                         tf.nn.dropout(variable, self.dropout_keep_prob),
-                         variable)
+        return tf.where(train_mode_mask,
+                        tf.nn.dropout(variable, self.dropout_keep_prob),
+                        variable)
 
     def _build_embs(self, enc_inputs_hyp=None, enc_inputs_ref=None, enc_inputs_da=None):
         """Build embedding lookups over the inputs.
@@ -659,27 +659,31 @@ class RatingPredictor(TFModel):
         # apply RNN over embeddings
         if enc_inputs_hyp is not None:
             with tf.variable_scope('enc_hyp'):
-                enc_outs_hyp, enc_state_hyp = tf.nn.rnn(self.cell, enc_in_hyp_emb, dtype=tf.float32)
+                enc_outs_hyp, enc_state_hyp = tf.contrib.rnn.static_rnn(
+                    self.cell, enc_in_hyp_emb, dtype=tf.float32)
 
         if enc_inputs_ref is not None:
             with self._get_ref_variable_scope():
-                enc_outs_ref, enc_state_ref = tf.nn.rnn(self.cell, enc_in_ref_emb, dtype=tf.float32)
+                enc_outs_ref, enc_state_ref = tf.contrib.rnn.static_rnn(
+                    self.cell, enc_in_ref_emb, dtype=tf.float32)
 
         if enc_inputs_da is not None:
             with tf.variable_scope('enc_da'):
-                enc_outs_da, enc_state_da = tf.nn.rnn(self.cell, enc_in_da_emb, dtype=tf.float32)
+                enc_outs_da, enc_state_da = tf.contrib.rnn.static_rnn(
+                    self.cell, enc_in_da_emb, dtype=tf.float32)
 
         if self.daclassif_pretrain_passes > 0:
             assert enc_inputs_hyp is not None
             self._build_da_classifier(tf.concat(1, self._flatten_enc_state(enc_state_hyp)))
 
         # concatenate last LSTM states & outputs (works for multilayer LSTMs&GRUs)
-        last_outs_and_states = tf.concat(1, (self._flatten_enc_state(enc_state_hyp)
+        last_outs_and_states = tf.concat((self._flatten_enc_state(enc_state_hyp)
                                              if enc_inputs_hyp is not None else []) +
                                          (self._flatten_enc_state(enc_state_ref)
                                           if enc_inputs_ref is not None else []) +
                                          (self._flatten_enc_state(enc_state_da)
-                                          if enc_inputs_da is not None else []))
+                                          if enc_inputs_da is not None else []),
+                                         axis=1)
 
         # build final FF layers + self.output
         self._build_final_classifier(last_outs_and_states)
@@ -759,7 +763,7 @@ class RatingPredictor(TFModel):
             att_states = tf.concat(1, top_states)
 
             # decoder
-            dec_cell = tf.nn.rnn_cell.OutputProjectionWrapper(self.cell, self.dict_size)
+            dec_cell = tf.contrib.rnn.OutputProjectionWrapper(self.cell, self.dict_size)
             dec_outputs, dec_states = tf06s2s.embedding_attention_decoder(
                 dec_inputs, enc_states[-1], att_states, dec_cell,
                 self.dict_size, self.emb_size, 1, self.dict_size,
