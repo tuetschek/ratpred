@@ -17,12 +17,15 @@ def parse_res(run):
     return pear, spea, mae, rmse
 
 def main(args):
+    runs_buf = []
     for num, run in enumerate(args.runs):
+        runs_buf.append(run)
         pear, spea, mae, rmse = parse_res(run)
-        if num % args.width == 0:
-            print '\\\\'
         print '&',
         print ' & '.join((pear, spea, mae, rmse)),
+        if num % args.width == args.width - 1:
+            print '\\\\ %% %s' % (' '.join(runs_buf))
+            runs_buf = []
 
 if __name__ == '__main__':
     ap = ArgumentParser(description='Grab scores from logs to build LaTeX tables')
