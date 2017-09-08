@@ -5,7 +5,7 @@ RatPred Installation and Usage
 Installation
 ------------
 
-RatPred requires Python 2.7 and [TGen](https://github.com/UFAL-DSG/tgen) to work. TGen must be installed in [Revision f5639b1](https://github.com/UFAL-DSG/tgen/tree/f5639b1eda2aee37fc3a452e8fbe577af7a8cfd1) for the current version of RatPred to work (you can [download it as a ZIP](https://github.com/UFAL-DSG/tgen/archive/f5639b1eda2aee37fc3a452e8fbe577af7a8cfd1.zip) instead of cloning TGen). We recommend using a [virtualenv](https://virtualenv.pypa.io/en/stable/) for installation.
+RatPred requires Python 2.7 and a current version of [TGen](https://github.com/UFAL-DSG/tgen) to work (using [Tensorflow 1.0.1](https://pypi.python.org/pypi/tensorflow/1.0.1)). We recommend using a [virtualenv](https://virtualenv.pypa.io/en/stable/) for installation.
 
 
 Usage
