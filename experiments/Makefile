@@ -9,15 +9,16 @@ MEM = 4g
 CPUS = 4
 
 # XXX Replace this with your batch queue engine system command !
-QP = --engine=grun
+QP = --engine=slurm --queue=amd-longq
 ifdef LOCAL
   QP = --engine=console
 endif
-QSUBMIT = qsubmit --logdir '$(TRY_DIR)' --mem $(MEM) --cores $(CPUS) --jobname R.$(TRY_NUM)$(CV_NUM)$(SEED).$(RUN_NAME) $(QP) $(QHOLD)
+QSUBMIT = qsubmit --logdir '$(TRY_DIR)' --mem $(MEM) --cores $(CPUS) --jobname R.$(TRY_NUM)$(CV_NUM)$(SEED).$(RUN_NAME) $(QP) $(QHOLD) --
 # XXX 
 
 TRAIN_PORTION=1.0
-ACTIVATE = echo -n # XXX Source your activate script instead
+ACTIVATE = echo -n "" # XXX source your activate script instead
+
 
 ifdef DEBUG
   DEBUG_LOG_TRAIN = -d $(TRY_DIR)/train.debug-log.txt.gz
