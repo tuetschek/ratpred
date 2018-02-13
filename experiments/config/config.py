@@ -23,6 +23,7 @@ config = {
               'dist_avg': 0.1,
               'cost_avg': 0.1,
           },
+          'max_cores': 4,
           'disk_store_freq': 1,
           'disk_store_min_pass': 20,
           'target_col': 'quality',
