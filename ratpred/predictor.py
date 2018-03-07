@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Classifying trees to determine which DAIs are represented.
+The main NLG QE code (Rating Predictor).
 """
 
 from __future__ import unicode_literals
@@ -13,6 +13,7 @@ import sys
 import re
 import math
 import os.path
+import functools
 
 import numpy as np
 import tensorflow as tf
@@ -39,6 +40,7 @@ def sigmoid(nums):
 
 
 class RatingPredictor(TFModel):
+    """Main rating prediction (QE) class."""
 
     def __init__(self, cfg):
 
@@ -47,6 +49,7 @@ class RatingPredictor(TFModel):
         self.cfg = cfg
         self.emb_size = cfg.get('emb_size', 50)
         self.cell_type = cfg.get('cell_type', 'lstm')
+        self.bidi = cfg.get('bidi', False)
         cfg['reverse'] = True  # embeddings should always be reversed
         self.word2vec_embs = cfg.get('word2vec_embs', None)
         self.char_embs = cfg.get('char_embs', False)
@@ -403,6 +406,7 @@ class RatingPredictor(TFModel):
         return (das, refs, hyps)
 
     def _cut_valid_data(self):
+        assert self.validation_size < len(self.train_das)
         self.valid_inputs = (self.train_das[-self.validation_size:],
                              self.train_refs[-self.validation_size:],
                              self.train_hyps[-self.validation_size:])
@@ -656,21 +660,26 @@ class RatingPredictor(TFModel):
         # create embedding lookups
         enc_in_hyp_emb, enc_in_ref_emb, enc_in_da_emb = self._build_embs(
             enc_inputs_hyp, enc_inputs_ref, enc_inputs_da)
+
+        # select RNN type (ltr or bidi)
+        rnn_func = functools.partial(tf.contrib.rnn.static_rnn,
+                                     cell=self.cell, dtype=tf.float32)
+        if self.bidi:
+            rnn_func = functools.partial(tf.contrib.rnn.static_bidirectional_rnn,
+                                         cell_fw=self.cell, cll_bw=self.cell, dtype=tf.float32)
+
         # apply RNN over embeddings
         if enc_inputs_hyp is not None:
             with tf.variable_scope('enc_hyp'):
-                enc_outs_hyp, enc_state_hyp = tf.contrib.rnn.static_rnn(
-                    self.cell, enc_in_hyp_emb, dtype=tf.float32)
+                enc_outs_hyp, enc_state_hyp = rnn_func(inputs=enc_in_hyp_emb)
 
         if enc_inputs_ref is not None:
             with self._get_ref_variable_scope():
-                enc_outs_ref, enc_state_ref = tf.contrib.rnn.static_rnn(
-                    self.cell, enc_in_ref_emb, dtype=tf.float32)
+                enc_outs_ref, enc_state_ref = rnn_func(inputs=enc_in_ref_emb)
 
         if enc_inputs_da is not None:
             with tf.variable_scope('enc_da'):
-                enc_outs_da, enc_state_da = tf.contrib.rnn.static_rnn(
-                    self.cell, enc_in_da_emb, dtype=tf.float32)
+                enc_outs_da, enc_state_da = rnn_func(inputs=enc_in_da_emb)
 
         if self.daclassif_pretrain_passes > 0:
             assert enc_inputs_hyp is not None
@@ -678,7 +687,7 @@ class RatingPredictor(TFModel):
 
         # concatenate last LSTM states & outputs (works for multilayer LSTMs&GRUs)
         last_outs_and_states = tf.concat((self._flatten_enc_state(enc_state_hyp)
-                                             if enc_inputs_hyp is not None else []) +
+                                          if enc_inputs_hyp is not None else []) +
                                          (self._flatten_enc_state(enc_state_ref)
                                           if enc_inputs_ref is not None else []) +
                                          (self._flatten_enc_state(enc_state_da)
