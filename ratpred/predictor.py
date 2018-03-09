@@ -666,26 +666,24 @@ class RatingPredictor(TFModel):
                                      cell=self.cell, dtype=tf.float32)
         if self.bidi:
             rnn_func = functools.partial(tf.contrib.rnn.static_bidirectional_rnn,
-                                         cell_fw=self.cell, cll_bw=self.cell, dtype=tf.float32)
+                                         cell_fw=self.cell, cell_bw=self.cell, dtype=tf.float32)
 
         # apply RNN over embeddings
         if enc_inputs_hyp is not None:
             with tf.variable_scope('enc_hyp'):
-                enc_outs_hyp, enc_state_hyp = rnn_func(inputs=enc_in_hyp_emb)
-
+                enc_state_hyp = rnn_func(inputs=enc_in_hyp_emb)[1:]
         if enc_inputs_ref is not None:
             with self._get_ref_variable_scope():
-                enc_outs_ref, enc_state_ref = rnn_func(inputs=enc_in_ref_emb)
-
+                enc_state_ref = rnn_func(inputs=enc_in_ref_emb)[1:]
         if enc_inputs_da is not None:
             with tf.variable_scope('enc_da'):
-                enc_outs_da, enc_state_da = rnn_func(inputs=enc_in_da_emb)
+                enc_state_da = rnn_func(inputs=enc_in_da_emb)[1:]
 
         if self.daclassif_pretrain_passes > 0:
             assert enc_inputs_hyp is not None
             self._build_da_classifier(tf.concat(1, self._flatten_enc_state(enc_state_hyp)))
 
-        # concatenate last LSTM states & outputs (works for multilayer LSTMs&GRUs)
+        # concatenate last LSTM states & outputs (works for bidi & multilayer LSTMs&GRUs)
         last_outs_and_states = tf.concat((self._flatten_enc_state(enc_state_hyp)
                                           if enc_inputs_hyp is not None else []) +
                                          (self._flatten_enc_state(enc_state_ref)
@@ -796,9 +794,11 @@ class RatingPredictor(TFModel):
             yield self.train_order[i: i + self.batch_size]
 
     def _flatten_enc_state(self, enc_state):
-        """Flatten up to two dimensions of tuples, return 1-D array."""
+        """Flatten up to 3 dimensions of tuples, return 1-D array."""
         if isinstance(enc_state, tuple):
             if isinstance(enc_state[0], tuple):
+                if isinstance(enc_state[0][0], tuple):
+                    return [x for z in enc_state for y in z for x in y]
                 return [x for y in enc_state for x in y]
             return [x for x in enc_state]
         return [enc_state]
