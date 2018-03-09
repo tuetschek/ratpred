@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
+Tensorboard logging functions
 """
 
 from __future__ import unicode_literals
@@ -25,6 +26,9 @@ class DummyTensorBoardLogger(object):
         return tf.constant(0.0, dtype=tf.float32, name='dummy_summary')
 
     def log(self, cur_step, merged_summaries):
+        pass
+
+    def add_graph(self, graph):
         pass
 
 class TensorBoardLogger(DummyTensorBoardLogger):
@@ -60,4 +64,6 @@ class TensorBoardLogger(DummyTensorBoardLogger):
     def log(self, cur_step, merged_summaries):
         self.tb_writer.add_summary(merged_summaries, cur_step)
 
-
+    def add_graph(self, graph):
+        self.tb_writer.add_graph(graph)
+        self.tb_writer.flush()  # ensure the graph is written to disk

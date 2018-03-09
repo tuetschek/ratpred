@@ -135,7 +135,7 @@ class RatingPredictor(TFModel):
             pickle.dump(self.get_all_settings(), fh, protocol=pickle.HIGHEST_PROTOCOL)
         tf_session_fname = re.sub(r'(.pickle)?(.gz)?$', '.tfsess', model_fname)
         log_info("Saving model parameters to %s..." % tf_session_fname)
-        self.saver.save(self.session, tf_session_fname)
+        self.saver.save(self.session, os.path.abspath(tf_session_fname))
         log_info('Done.')
 
     def get_all_settings(self):
@@ -573,6 +573,7 @@ class RatingPredictor(TFModel):
             session_config = tf.ConfigProto(inter_op_parallelism_threads=self.max_cores,
                                             intra_op_parallelism_threads=self.max_cores)
         self.session = tf.Session(config=session_config)
+        self.tb_logger.add_graph(self.session.graph)
 
         # this helps us load/save the model
         self.saver = tf.train.Saver(tf.global_variables(), write_version=tf.train.SaverDef.V2)
@@ -666,31 +667,33 @@ class RatingPredictor(TFModel):
                                      cell=self.cell, dtype=tf.float32)
         if self.bidi:
             rnn_func = functools.partial(tf.contrib.rnn.static_bidirectional_rnn,
-                                         cell_fw=self.cell, cell_bw=self.cell, dtype=tf.float32)
+                                         cell_fw=self.cell, cll_bw=self.cell, dtype=tf.float32)
 
         # apply RNN over embeddings
         if enc_inputs_hyp is not None:
             with tf.variable_scope('enc_hyp'):
-                enc_state_hyp = rnn_func(inputs=enc_in_hyp_emb)[1:]
+                enc_outs_hyp, enc_state_hyp = rnn_func(inputs=enc_in_hyp_emb)
+
         if enc_inputs_ref is not None:
             with self._get_ref_variable_scope():
-                enc_state_ref = rnn_func(inputs=enc_in_ref_emb)[1:]
+                enc_outs_ref, enc_state_ref = rnn_func(inputs=enc_in_ref_emb)
+
         if enc_inputs_da is not None:
             with tf.variable_scope('enc_da'):
-                enc_state_da = rnn_func(inputs=enc_in_da_emb)[1:]
+                enc_outs_da, enc_state_da = rnn_func(inputs=enc_in_da_emb)
 
         if self.daclassif_pretrain_passes > 0:
             assert enc_inputs_hyp is not None
-            self._build_da_classifier(tf.concat(1, self._flatten_enc_state(enc_state_hyp)))
+            self._build_da_classifier(tf.concat(self._flatten_enc_state(enc_state_hyp), axis=1))
 
-        # concatenate last LSTM states & outputs (works for bidi & multilayer LSTMs&GRUs)
+        # concatenate last LSTM states & outputs (works for multilayer LSTMs&GRUs)
         last_outs_and_states = tf.concat((self._flatten_enc_state(enc_state_hyp)
                                           if enc_inputs_hyp is not None else []) +
                                          (self._flatten_enc_state(enc_state_ref)
                                           if enc_inputs_ref is not None else []) +
                                          (self._flatten_enc_state(enc_state_da)
                                           if enc_inputs_da is not None else []),
-                                         axis=1)
+                                         axis=1, name='last_outs_and_states')
 
         # build final FF layers + self.output
         self._build_final_classifier(last_outs_and_states)
@@ -794,11 +797,9 @@ class RatingPredictor(TFModel):
             yield self.train_order[i: i + self.batch_size]
 
     def _flatten_enc_state(self, enc_state):
-        """Flatten up to 3 dimensions of tuples, return 1-D array."""
+        """Flatten up to two dimensions of tuples, return 1-D array."""
         if isinstance(enc_state, tuple):
             if isinstance(enc_state[0], tuple):
-                if isinstance(enc_state[0][0], tuple):
-                    return [x for z in enc_state for y in z for x in y]
                 return [x for y in enc_state for x in y]
             return [x for x in enc_state]
         return [enc_state]
