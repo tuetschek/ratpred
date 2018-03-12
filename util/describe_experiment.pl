@@ -96,6 +96,7 @@ if ( $config_data =~ /'dropout_keep_prob'\s*:\s*(0\.[0-9]*)/ ){
     $nn_shape .= '-D' . ( $config_data =~ /'dropout_keep_prob'\s*:\s*(0\.[0-9]*)/ )[0];
 }
 $nn_shape .= ' ' . ( ( $config_data =~ /'cell_type'\s*:\s*'([^']*)'/ )[0] // 'lstm' );
+$nn_shape .= ' +bidi'  if ( $config_data =~ /'bidi'\s*:\s*True/ );
 $nn_shape .= ' +w2v-s'  if ( $config_data =~ /'word2vec_embs'\s*:\s*'(?!trainable')/ );
 $nn_shape .= ' +w2v-t'  if ( $config_data =~ /'word2vec_embs'\s*:\s*'trainable'/ );
 $nn_shape .= ' +ce'  if ( $config_data =~ /'char_embs'\s*:\s*True/ );
