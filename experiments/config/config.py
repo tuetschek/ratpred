@@ -42,6 +42,7 @@ config = {
           'predict_halves': True,
           'predict_coarse': None, #'train',
           'cell_type': 'gru/2',
+          'bidi': True,
           'ref_enc': False,
           'da_enc': True,
           'use_seq2seq': False,
