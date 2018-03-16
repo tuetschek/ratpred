@@ -563,8 +563,6 @@ class RatingPredictor(TFModel):
                 axis=1))
         else:
             # mean square error cost -- predict 1 number
-            # NB: needs to compute mean over axis=0 only, otherwise it won't work (?)
-            # XXX what to do here ??? (removed axis=0, let's see if it works)
             self.cost = tf.reduce_mean(tf.square(self.target - self.output))
 
         self.tb_logger.create_tensor_summaries(self.cost)
