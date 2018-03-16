@@ -889,7 +889,7 @@ class RatingPredictor(TFModel):
                 self.tb_logger.log(pass_no, outputs[3])
 
             pred = self._adjust_output(results)
-            true = self._adjust_output(self.y[inst_nos], no_sigmoid=True)
+            true = self._adjust_output(targets, no_sigmoid=True)
             dist = np.sum(np.abs(pred - true))
             corr = np.sum(self._round_rating(pred) == self._round_rating(true))
 
