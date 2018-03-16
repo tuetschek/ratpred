@@ -2,19 +2,22 @@
 # -*- coding: utf-8 -*-
 
 """
-TODO
+File I/O utilities.
 """
 
 from __future__ import unicode_literals
 import pandas as pd
+import numpy as np
 
 from tgen.data import DA
 from tgen.futil import tokenize
 from tgen.delex import delex_sent
 
 
-def read_data(filename, target_col, das_type='cambridge',
+def read_data(filename, target_cols, das_type='cambridge',
               delex_slots=set(), delex_slot_names=False, delex_das=False):
+    """Read the input data from a TSV file."""
+
     data = pd.read_csv(filename, sep=b"\t", encoding='UTF-8')
 
     # force data type to string if the data set doesn't contain human references
@@ -49,7 +52,8 @@ def read_data(filename, target_col, das_type='cambridge',
     inputs = [(da, ref, hyp, ri)
               for da, ref, hyp, ri in zip(das, texts_ref, texts_hyp, real_indics)]
 
-    targets = data[target_col]
+    targets = np.array(data[[target_cols] if not isinstance(target_cols, list) else target_cols],
+                       dtype=np.float)
 
     return inputs, targets
 

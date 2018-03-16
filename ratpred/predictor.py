@@ -470,8 +470,9 @@ class RatingPredictor(TFModel):
         if self.da_enc:
             self.da_input_shape = self.da_embs.get_embeddings_shape()
 
-        self.outputs_range_lo = int(round(min(self.y)))
-        self.outputs_range_hi = int(round(max(self.y)))
+        # find the ranges of the targets (this needs to be global for all targets for simplicity)
+        self.outputs_range_lo = np.round(np.min(self.y)).astype(np.int)
+        self.outputs_range_hi = np.round(np.max(self.y)).astype(np.int)
         if self.predict_ints:
             self.y = self._ratings_to_binary(self.y)
             if self.predict_coarse == 'train':
@@ -482,10 +483,11 @@ class RatingPredictor(TFModel):
                 if self.predict_halves:
                     # all 1/2 steps between hi and lo, i.e., 2*(range-1)
                     self.num_outputs *= 2
+            self.num_outputs = (self.num_outputs, self.y.shape[1])  # var. number of binary outputs
         else:
             # make target output 1-D and round it to desired coarseness
             self.y = np.array([[self._round_rating(y_, mode='train')] for y_ in self.y])
-            self.num_outputs = 1  # just one real-valued output
+            self.num_outputs = (1, self.y.shape[2])  # just one real-valued output per aspect
 
         # initialize NN classifier
         self._build_neural_network()
@@ -505,11 +507,13 @@ class RatingPredictor(TFModel):
 
     def _ratings_to_binary(self, ints):
         """Transform input int/half-int values into list of binaries (1's lower than
-        the (half-)int, 0's higher)."""
+        the (half-)int, 0's higher). Takes a 2-D array (instances x measures), returns
+        a 3-D array."""
         step = self._rounding_step('train')
-        ints = [[0 if val < i + (step / 2.0) else 1
-                 for i in np.arange(self.outputs_range_lo, self.outputs_range_hi, step)]
-                for val in ints]
+        ints = [[[0 if measure < i + (step / 2.0) else 1
+                  for i in np.arange(self.outputs_range_lo, self.outputs_range_hi, step)]
+                 for measure in val]
+                for val in inst]
         return np.array(ints)
 
     def _build_neural_network(self):
@@ -518,7 +522,7 @@ class RatingPredictor(TFModel):
         # set TensorFlow random seed
         tf.set_random_seed(rnd.randint(-sys.maxint, sys.maxint))
 
-        self.target = tf.placeholder(tf.float32, [None, self.num_outputs], name='target')
+        self.target = tf.placeholder(tf.float32, [None, np.prod(self.num_outputs)], name='target')
 
         with tf.variable_scope(self.scope_name):
 
@@ -559,7 +563,8 @@ class RatingPredictor(TFModel):
         else:
             # mean square error cost -- predict 1 number
             # NB: needs to compute mean over axis=0 only, otherwise it won't work (?)
-            self.cost = tf.reduce_mean(tf.square(self.target - self.output), axis=0)
+            # XXX what to do here ??? (removed axis=0, let's see if it works)
+            self.cost = tf.reduce_mean(tf.square(self.target - self.output))
 
         self.tb_logger.create_tensor_summaries(self.cost)
 
@@ -742,9 +747,11 @@ class RatingPredictor(TFModel):
                     self.tb_logger.create_tensor_summaries(hidden)
 
         with tf.variable_scope('classif'):
-            w = tf.get_variable('final-transf-w', (state_size, self.num_outputs),
+            # even though the outputs are 2-D, the final layer is flattened for simple
+            # matrix multiplication
+            w = tf.get_variable('final-transf-w', (state_size, np.prod(self.num_outputs)),
                                 initializer=tf.random_normal_initializer(stddev=0.1))
-            b = tf.get_variable('final-transf-b', (self.num_outputs,),
+            b = tf.get_variable('final-transf-b', (np.prod(self.num_outputs)),
                                 initializer=tf.constant_initializer())
             self.tb_logger.create_tensor_summaries(w)
             self.tb_logger.create_tensor_summaries(b)
@@ -854,6 +861,8 @@ class RatingPredictor(TFModel):
 
         for inst_nos in self._batches():
 
+            # XXX flatten self.y before using it in the network
+            # XXX de-flatten it back for classification
             pass_insts += len(inst_nos)
             log_debug('INST-NOS: ' + str(inst_nos))
             log_debug("\n".join(' '.join([tok for tok, _ in self.train_hyps[i]]) + "\n" +
@@ -862,7 +871,9 @@ class RatingPredictor(TFModel):
                                 unicode(self.y[i])
                                 for i in inst_nos))
 
-            fd = {self.target: self.y[inst_nos]}
+            targets = self.y[inst_nos]
+            targets = np.reshape(targets, (targets.shape[0], np.prod(targets.shape[1:])))
+            fd = {self.target: targets}
             self._add_inputs_to_feed_dict(fd,
                                           inputs_hyp=self.X_hyp[inst_nos] if self.hyp_enc else None,
                                           inputs_ref=self.X_ref[inst_nos] if self.ref_enc else None,
