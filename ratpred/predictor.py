@@ -558,7 +558,8 @@ class RatingPredictor(TFModel):
         if self.predict_ints:
             # sigmoid cost -- predict a bunch of 1's and 0's (not just one 1)
             self.cost = tf.reduce_mean(tf.reduce_sum(
-                tf.nn.sigmoid_cross_entropy_with_logits(self.output, self.target, name='CE'),
+                tf.nn.sigmoid_cross_entropy_with_logits(
+                    logits=self.output, labels=self.target, name='CE'),
                 axis=1))
         else:
             # mean square error cost -- predict 1 number
