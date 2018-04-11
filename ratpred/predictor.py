@@ -854,14 +854,12 @@ class RatingPredictor(TFModel):
         log_debug("Train order: " + str(self.train_order))
 
         pass_insts = 0
-        pass_cost = 0
-        pass_corr = 0
-        pass_dist = 0
+        pass_cost = 0.0
+        pass_corr = np.zeros(self.y.shape[2], dtype=int)
+        pass_dist = np.zeros(self.y.shape[2])
 
         for inst_nos in self._batches():
 
-            # XXX flatten self.y before using it in the network
-            # XXX de-flatten it back for classification
             pass_insts += len(inst_nos)
             log_debug('INST-NOS: ' + str(inst_nos))
             log_debug("\n".join(' '.join([tok for tok, _ in self.train_hyps[i]]) + "\n" +
@@ -890,11 +888,13 @@ class RatingPredictor(TFModel):
 
             pred = self._adjust_output(results)
             true = self._adjust_output(targets, no_sigmoid=True)
-            dist = np.sum(np.abs(pred - true))
-            corr = np.sum(self._round_rating(pred) == self._round_rating(true))
+            dist = np.sum(np.abs(pred - true), axis=0)
+            corr = np.sum(self._round_rating(pred) == self._round_rating(true), axis=0)
 
             log_debug('R: ' + str(results))
-            log_debug('COST: %f, corr %d/%d, dist %.3f' % (cost, corr, len(inst_nos), dist))
+            log_debug('COST: %f, corr %s/%d, dist %s' %
+                      (cost, ':'.join(['%d' % c for c in corr]),
+                       len(inst_nos), ':'.join(['%.3f' % d for d in dist])))
 
             pass_dist += dist
             pass_corr += corr
@@ -902,19 +902,18 @@ class RatingPredictor(TFModel):
 
         # print and return statistics
         self._print_pass_stats(pass_no, datetime.timedelta(seconds=(time.time() - pass_start_time)),
-                               pass_cost,
-                               float(pass_corr) / len(self.train_hyps),
-                               pass_dist / len(self.train_hyps))
-
+                               pass_cost, pass_corr, pass_dist, len(self.train_hyps))
         return pass_cost
 
-    def _print_pass_stats(self, pass_no, time, cost, acc, avg_dist):
-        log_info('PASS %03d: duration %s, cost %f, acc %.3f, avg. dist %.3f' %
+    def _print_pass_stats(self, pass_no, time, cost, corr, dist, n_inst):
+        acc = ':'.join(['%.3f' % a for a in (corr / float(n_inst))])
+        avg_dist = ':'.join(['%.3f' % d for d in (dist / float(n_inst))])
+        log_info('PASS %03d: duration %s, cost %f, acc %s, avg. dist %s' %
                  (pass_no, str(time), cost, acc, avg_dist))
         self.tb_logger.add_to_log(pass_no, {'train_pass_duration': time.total_seconds(),
                                             'train_cost': cost,
-                                            'train_accuracy': acc,
-                                            'train_dist_avg': avg_dist})
+                                            'train_accuracy': corr / float(n_inst),
+                                            'train_dist_avg': dist / float(n_inst)})
 
     def _print_valid_stats(self, pass_no, results):
         """Print validation results for the given training pass number."""

@@ -19,7 +19,7 @@ config = {
           'max_cores': 4,
           'disk_store_freq': 1,
           'disk_store_min_pass': 20,
-          'target_col': 'quality',
+          'target_col': ['quality', 'naturalness'],
           'reuse_embeddings': False,
           'char_embs': False,
           'tanh_layers': 1,
