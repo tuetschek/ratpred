@@ -373,6 +373,7 @@ class RatingPredictor(TFModel):
         # TODO possibly need to transpose the output here as well
         # TODO the rest does not support batches even if the previous does !!!
         val = self.session.run(self.output, feed_dict=fd)
+        # XXX the float here is suspicious, will not work for multiple
         return float(self._adjust_output(val))
 
     def _adjust_output(self, val, no_sigmoid=False):
@@ -381,7 +382,8 @@ class RatingPredictor(TFModel):
             coeff = self._rounding_step('train')
             if not no_sigmoid:
                 val = sigmoid(val)
-            return np.clip(coeff * np.sum(val, axis=1, keepdims=True) + self.outputs_range_lo,
+            val = val.reshape(val.shape[:1] + self.num_outputs)
+            return np.clip(coeff * np.sum(val, axis=2) + self.outputs_range_lo,
                            self.outputs_range_lo, self.outputs_range_hi)
         else:
             # just squeeze the output float value into our range
@@ -473,21 +475,11 @@ class RatingPredictor(TFModel):
         # find the ranges of the targets (this needs to be global for all targets for simplicity)
         self.outputs_range_lo = np.round(np.min(self.y)).astype(np.int)
         self.outputs_range_hi = np.round(np.max(self.y)).astype(np.int)
-        if self.predict_ints:
+        if self.predict_ints: # var. number of binary outputs (based on coarseness & lo-hi)
             self.y = self._ratings_to_binary(self.y)
-            if self.predict_coarse == 'train':
-                self.num_outputs = 3
-            else:
-                # we actually want 1 output less than the range (all 0's = lo, all 1'= hi)
-                self.num_outputs = self.outputs_range_hi - self.outputs_range_lo
-                if self.predict_halves:
-                    # all 1/2 steps between hi and lo, i.e., 2*(range-1)
-                    self.num_outputs *= 2
-            self.num_outputs = (self.num_outputs, self.y.shape[1])  # var. number of binary outputs
-        else:
-            # make target output 1-D and round it to desired coarseness
-            self.y = np.array([[self._round_rating(y_, mode='train')] for y_ in self.y])
-            self.num_outputs = (1, self.y.shape[2])  # just one real-valued output per aspect
+        else:  # just one real-valued output per aspect (rounded to desired coarseness)
+            self.y = self._round_rating(self.y, mode='train').reshape(self.y.shape + (1,))
+        self.num_outputs = self.y.shape[1:]
 
         # initialize NN classifier
         self._build_neural_network()
@@ -495,6 +487,7 @@ class RatingPredictor(TFModel):
         self.session.run(tf.global_variables_initializer())
 
     def _rounding_step(self, mode='test'):
+        # TODO predict_coarse was designed for lo-mid-hi ??
         if self.predict_coarse == 'train' or self.predict_coarse is not None and mode == 'test':
             return (self.outputs_range_hi - self.outputs_range_lo) / 2.0
         elif self.predict_halves:
@@ -513,7 +506,7 @@ class RatingPredictor(TFModel):
         ints = [[[0 if measure < i + (step / 2.0) else 1
                   for i in np.arange(self.outputs_range_lo, self.outputs_range_hi, step)]
                  for measure in val]
-                for val in inst]
+                for val in ints]
         return np.array(ints)
 
     def _build_neural_network(self):
@@ -855,8 +848,8 @@ class RatingPredictor(TFModel):
 
         pass_insts = 0
         pass_cost = 0.0
-        pass_corr = np.zeros(self.y.shape[2], dtype=int)
-        pass_dist = np.zeros(self.y.shape[2])
+        pass_corr = np.zeros(self.y.shape[1], dtype=int)
+        pass_dist = np.zeros(self.y.shape[1])
 
         for inst_nos in self._batches():
 
