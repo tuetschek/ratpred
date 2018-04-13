@@ -76,6 +76,20 @@ class Evaluator(object):
         return ret
 
     def append_from_tsv(self, fname):
-        data = read_outputs(fname)
-        for inp, raw_trg, trg, raw_rat, rat in zip(*data):
+        inps, outs = read_outputs(fname)
+        cols = sorted(outs.keys())
+        # empty: initialize cols according to data
+        if self.target_cols == [''] and not self.inputs:
+            self.target_cols = cols
+            self.reset()
+        # we're non-empty: check compatibility
+        else:
+            assert self.target_cols == cols
+        # convert format
+        raw_trgs = np.array([outs[key]['human_rating_raw'] for key in cols]).transpose()
+        trgs = np.array([outs[key]['human_rating'] for key in cols]).transpose()
+        raw_rats = np.array([outs[key]['system_rating_raw'] for key in cols]).transpose()
+        rats = np.array([outs[key]['system_rating'] for key in cols]).transpose()
+        # append the instances
+        for inp, raw_trg, trg, raw_rat, rat in zip(inps, raw_trgs, trgs, raw_rats, rats):
             self.append(inp, raw_trg, trg, raw_rat, rat)

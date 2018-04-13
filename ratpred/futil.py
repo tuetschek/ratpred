@@ -75,6 +75,7 @@ def write_outputs(filename, inputs, outputs):
 def read_outputs(filename):
     data = pd.read_csv(filename, sep=b"\t", encoding='UTF-8')
     das = [DA.parse_cambridge_da(da) for da in data['mr']]
+
     # force string data type for empty human references
     data['orig_ref'] = data['orig_ref'].apply(lambda x: '' if not isinstance(x, basestring) else x)
     texts_ref = [[(tok, None) for tok in tokenize(sent.lower()).split(' ')]
@@ -83,6 +84,14 @@ def read_outputs(filename):
                  for sent in data['system_output']]
     inputs = [(da, text_ref, text_hyp) for
               da, text_ref, text_hyp in zip(das, texts_ref, texts_hyp)]
-    return (inputs,
-            list(data['human_rating_raw']), list(data['human_rating']),
-            list(data['system_rating_raw']), list(data['system_rating']))
+
+    # find out which columns were used for ratings
+    target_cols = [c[:-len('_system_rating')] for c in data.columns if c.endswith('_system_rating')]
+    assert target_cols
+    # compile data from all these columns
+    outputs = {}
+    for target_col in target_cols:
+        outputs[target_col] = {subcol: list(data[target_col + '_' + subcol])
+                               for subcol in ['human_rating_raw', 'human_rating',
+                                              'system_rating_raw', 'system_rating']}
+    return (inputs, outputs)
