@@ -58,18 +58,17 @@ def read_data(filename, target_cols, das_type='cambridge',
     return inputs, targets
 
 
-def write_outputs(filename, inputs, raw_targets, targets, raw_outputs, outputs):
+def write_outputs(filename, inputs, outputs):
     das = [inp[0].to_cambridge_da_string() for inp in inputs]
     input_refs = [" ".join([tok for tok, _ in inp[1]]) for inp in inputs]
     input_hyps = [" ".join([tok for tok, _ in inp[2]]) for inp in inputs]
-    outputs = [float(output) for output in outputs]
-    df = pd.DataFrame({'mr': das,
-                       'orig_ref': input_refs,
-                       'system_output': input_hyps,
-                       'human_rating_raw': raw_targets,
-                       'human_rating': targets,
-                       'system_rating_raw': raw_outputs,
-                       'system_rating': outputs})
+    df = {'mr': das,
+          'orig_ref': input_refs,
+          'system_output': input_hyps}
+    for target_col in outputs.iterkeys():
+        for subcol, values in outputs[target_col].iteritems():
+            df[target_col + '_' + subcol] = values
+    df = pd.DataFrame(df)
     df.to_csv(filename, sep=b"\t", index=False, encoding='UTF-8')
 
 

@@ -9,6 +9,11 @@ import numpy as np
 from ratpred.futil import write_outputs, read_outputs
 
 
+def stats_for_col(data, col_num):
+    """Transpose array of arrays + return a specific column (with original data grouped by rows)."""
+    return np.array(data).transpose()[col_num]
+
+
 class Evaluator(object):
     """A cumulative statistics container to store predictions and later compute correlations."""
 
@@ -42,15 +47,16 @@ class Evaluator(object):
 
     def write_tsv(self, fname):
         """Write a TSV file containing all the prediction data so far."""
-        write_outputs(fname, self.inputs,
-                      self.raw_targets, self.targets, self.raw_ratings, self.ratings)
+        outputs = {}
+        for col_num, target_col in enumerate(self.target_cols):
+            outputs[target_col] = {'human_rating_raw': stats_for_col(self.raw_targets, col_num),
+                                   'human_rating': stats_for_col(self.targets, col_num),
+                                   'system_rating_raw': stats_for_col(self.raw_ratings, col_num),
+                                   'system_rating': stats_for_col(self.ratings, col_num)}
+        write_outputs(fname, self.inputs, outputs)
 
     def get_stats(self):
         """Return important statistics (incl. correlations) in a dictionary."""
-
-        def stats_for_col(data, col_num):
-            return np.array(data).transpose()[col_num]
-
         ret = {}
         for col_num, target_col in enumerate(self.target_cols):
             pearson, pearson_pv = scipy.stats.pearsonr(stats_for_col(self.targets, col_num),
