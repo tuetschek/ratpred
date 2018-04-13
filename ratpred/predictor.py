@@ -92,7 +92,9 @@ class RatingPredictor(TFModel):
         self.checkpoint_pass = -1
         self.disk_stored_pass = -1
 
-        self.target_col = cfg.get('target_col', 'quality')
+        self.target_cols = cfg.get('target_col', 'quality')
+        if not isinstance(self.target_cols, (list, tuple)):
+            self.target_cols = [self.target_cols]
         self.delex_slots = cfg.get('delex_slots', set())
         if self.delex_slots:
             self.delex_slots = set(self.delex_slots.split(','))
@@ -219,7 +221,7 @@ class RatingPredictor(TFModel):
 
     def load_data(self, data_file):
         """Load a data file, return inputs and targets."""
-        return read_data(data_file, self.target_col,
+        return read_data(data_file, self.target_cols,
                          'text' if self.da_enc == 'token' else 'cambridge',
                          self.delex_slots, self.delex_slot_names, self.delex_das)
 
@@ -370,11 +372,8 @@ class RatingPredictor(TFModel):
         inputs_da = np.array([self.da_embs.get_embeddings(da) for da in das]) if das else None
         fd = {}
         self._add_inputs_to_feed_dict(fd, inputs_hyp, inputs_ref, inputs_da)
-        # TODO possibly need to transpose the output here as well
-        # TODO the rest does not support batches even if the previous does !!!
         val = self.session.run(self.output, feed_dict=fd)
-        # XXX the float here is suspicious, will not work for multiple
-        return float(self._adjust_output(val))
+        return self._adjust_output(val).astype(float)
 
     def _adjust_output(self, val, no_sigmoid=False):
         if self.predict_ints:
@@ -1009,11 +1008,11 @@ class RatingPredictor(TFModel):
             das, input_refs, input_hyps = inputs[:3]  # ignore is_real indicators
         else:
             das, input_refs, input_hyps = self._divide_inputs(inputs)
-        evaler = Evaluator()
+        evaler = Evaluator(self.target_cols)
         for da, input_ref, input_hyp, raw_target in zip(das, input_refs, input_hyps, raw_targets):
             raw_rating = self.rate([input_hyp] if self.hyp_enc else None,
                                    [input_ref] if self.ref_enc else None,
-                                   [da] if self.da_enc else None)
+                                   [da] if self.da_enc else None)[0]  # remove the "batch" dimension
             rating = self._round_rating(raw_rating)
             target = self._round_rating(raw_target)
             evaler.append((da, input_ref, input_hyp),

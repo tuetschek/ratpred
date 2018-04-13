@@ -48,14 +48,17 @@ def test(args):
 
     log_info("Rating %d instances..." % len(inputs))
     results = rp.evaluate(inputs, targets, args.write_outputs)
-    log_info("Distance: %.3f (avg: %.3f, std: %.3f)" % (results['dist_total'],
-                                                        results['dist_avg'],
-                                                        results['dist_stddev']))
-    log_info("Accuracy: %.3f" % results['accuracy'])
-    log_info("Pearson correlation: %.3f (p-value %.3f)" %
-             (results['pearson'], results['pearson_pv']))
-    log_info("Spearman correlation: %.3f (p-value %.3f)" %
-             (results['spearman'], results['spearman_pv']))
+    for tc in rp.target_cols:
+
+        log_info("%s Distance: %.3f (avg: %.3f, std: %.3f)" % (tc.upper(),
+                                                               results[tc]['dist_total'],
+                                                               results[tc]['dist_avg'],
+                                                               results[tc]['dist_stddev']))
+        log_info("%s Accuracy: %.3f" % (tc.upper(), results[tc]['accuracy']))
+        log_info("%s Pearson correlation: %.3f (p-value %.3f)" %
+                 (tc.upper(), results[tc]['pearson'], results[tc]['pearson_pv']))
+        log_info("%s Spearman correlation: %.3f (p-value %.3f)" %
+                 (tc.upper(), results[tc]['spearman'], results[tc]['spearman_pv']))
 
 
 def main():

@@ -12,7 +12,8 @@ from ratpred.futil import write_outputs, read_outputs
 class Evaluator(object):
     """A cumulative statistics container to store predictions and later compute correlations."""
 
-    def __init__(self):
+    def __init__(self, target_cols=None):
+        self.target_cols = target_cols if target_cols else ['']
         self.reset()
 
     def reset(self):
@@ -25,7 +26,7 @@ class Evaluator(object):
         self.dists = []
         self.aes = []  # absolute error
         self.sqes = []  # square error
-        self.correct = 0
+        self.correct = np.zeros((len(self.target_cols),))
 
     def append(self, inp, raw_trg, trg, raw_rat, rat):
         """Append one rating (along with input & target), update statistics."""
@@ -37,7 +38,7 @@ class Evaluator(object):
         self.dists.append(abs(raw_rat - raw_trg))
         self.aes.append(abs(rat - trg))
         self.sqes.append((rat - trg) ** 2)
-        self.correct += 1 if trg == rat else 0
+        self.correct += (trg == rat).astype(np.float)
 
     def write_tsv(self, fname):
         """Write a TSV file containing all the prediction data so far."""
@@ -46,18 +47,27 @@ class Evaluator(object):
 
     def get_stats(self):
         """Return important statistics (incl. correlations) in a dictionary."""
-        pearson, pearson_pv = scipy.stats.pearsonr(self.targets, self.ratings)
-        spearman, spearman_pv = scipy.stats.spearmanr(self.targets, self.ratings)
-        return {'dist_total': np.sum(self.dists),
-                'dist_avg': np.mean(self.dists),
-                'dist_stddev': np.std(self.dists),
-                'mae': np.mean(self.aes),
-                'rmse': np.sqrt(np.mean(self.sqes)),
-                'accuracy': float(self.correct) / len(self.inputs),
-                'pearson': pearson,
-                'pearson_pv': pearson_pv,
-                'spearman': spearman,
-                'spearman_pv': spearman_pv}
+
+        def stats_for_col(data, col_num):
+            return np.array(data).transpose()[col_num]
+
+        ret = {}
+        for col_num, target_col in enumerate(self.target_cols):
+            pearson, pearson_pv = scipy.stats.pearsonr(stats_for_col(self.targets, col_num),
+                                                       stats_for_col(self.ratings, col_num))
+            spearman, spearman_pv = scipy.stats.spearmanr(stats_for_col(self.targets, col_num),
+                                                          stats_for_col(self.ratings, col_num))
+            ret[target_col] = {'dist_total': np.sum(stats_for_col(self.dists, col_num)),
+                               'dist_avg': np.mean(stats_for_col(self.dists, col_num)),
+                               'dist_stddev': np.std(stats_for_col(self.dists, col_num)),
+                               'mae': np.mean(stats_for_col(self.aes, col_num)),
+                               'rmse': np.sqrt(np.mean(stats_for_col(self.sqes, col_num))),
+                               'accuracy': float(self.correct[col_num]) / len(self.inputs),
+                               'pearson': pearson,
+                               'pearson_pv': pearson_pv,
+                               'spearman': spearman,
+                               'spearman_pv': spearman_pv}
+        return ret
 
     def append_from_tsv(self, fname):
         data = read_outputs(fname)
