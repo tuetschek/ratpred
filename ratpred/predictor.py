@@ -116,7 +116,7 @@ class RatingPredictor(TFModel):
         self.predict_halves = cfg.get('predict_halves', False)
         self.predict_coarse = cfg.get('predict_coarse', None)
         self.scale_reversed = cfg.get('scale_reversed', False)  # HTER is reversed
-        self.num_outputs = 1  # will be changed in training if predict_ints is True
+        self.num_outputs = None  # will be changed in training
 
         self.tb_logger = DummyTensorBoardLogger()
 
@@ -149,8 +149,7 @@ class RatingPredictor(TFModel):
             data['input_shape'] = self.input_shape
             data['outputs_range_lo'] = self.outputs_range_lo
             data['outputs_range_hi'] = self.outputs_range_hi
-            if self.predict_ints:
-                data['num_outputs'] = self.num_outputs
+            data['num_outputs'] = self.num_outputs
         if self.da_enc:
             data['da_embs'] = self.da_embs
             data['da_dict_size'] = self.da_dict_size
