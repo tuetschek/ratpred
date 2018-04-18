@@ -353,8 +353,13 @@ class RatingPredictor(TFModel):
 
     def _compute_comb_cost(self, results):
         """Compute combined cost, given my validation quantity weights."""
-        comb_cost = sum([weight * results[quantity]
-                         for quantity, weight in self.validation_weights.iteritems()])
+        aspects = [aspect for aspect in results.iterkeys() if isinstance(results[aspect], dict)]
+        comb_cost = 0.0
+        for quantity, weight in self.validation_weights.iteritems():
+            if quantity in results:
+                comb_cost += weight * results[quantity]
+            else:  # sum the given quantity over all target columns equally
+                comb_cost += sum([weight * results[aspect][quantity] for aspect in aspects])
         results['cost_comb'] = comb_cost
         return comb_cost
 
@@ -473,7 +478,7 @@ class RatingPredictor(TFModel):
         # find the ranges of the targets (this needs to be global for all targets for simplicity)
         self.outputs_range_lo = np.round(np.min(self.y)).astype(np.int)
         self.outputs_range_hi = np.round(np.max(self.y)).astype(np.int)
-        if self.predict_ints: # var. number of binary outputs (based on coarseness & lo-hi)
+        if self.predict_ints:  # var. number of binary outputs (based on coarseness & lo-hi)
             self.y = self._ratings_to_binary(self.y)
         else:  # just one real-valued output per aspect (rounded to desired coarseness)
             self.y = self._round_rating(self.y, mode='train').reshape(self.y.shape + (1,))
@@ -908,11 +913,20 @@ class RatingPredictor(TFModel):
 
     def _print_valid_stats(self, pass_no, results):
         """Print validation results for the given training pass number."""
-        log_info(('Validation distance: %.3f (avg: %.3f), accuracy %.3f, ' +
-                  'pearson %.3f, spearman %.3f, combined cost %.3f') %
-                 tuple(results[key]
-                       for key in ['dist_total', 'dist_avg', 'accuracy',
-                                   'pearson', 'spearman', 'cost_comb']))
+        aspects = sorted([aspect for aspect in results.iterkeys()
+                          if isinstance(results[aspect], dict)])
+        to_print = []
+        for quant in ['dist_total', 'dist_avg', 'accuracy', 'pearson', 'spearman']:
+            to_print.append(':'.join(['%.3f' % results[aspect][quant] for aspect in aspects]))
+        to_print.append(results['cost_comb'])
+
+        log_info(('Validation distance: %s (avg: %s), accuracy %s, ' +
+                  'pearson %s, spearman %s, combined cost %.3f') % tuple(to_print))
+
+        for aspect in aspects:
+            for key, val in results[aspect].iteritems():
+                results[aspect + '_' + key] = val
+            del results[aspect]
         self.tb_logger.add_to_log(pass_no, {'valid_' + key: value
                                             for key, value in results.iteritems()})
 
