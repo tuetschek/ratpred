@@ -34,20 +34,23 @@ exit() if ( !defined $file_to_process );
 
 # Process the file
 open( my $fh, '<:utf8', $file_to_process );
-my ( $pr, $lists, $bleu ) = ( '', '', '' );
+my ($mae_str, $rmse_str, $pear_str, $spea_str) = ('') x 4;
 
 while ( my $line = <$fh> ) {
     chomp $line;
 
     if ( $line =~ /(MAE:.*RMSE:)/i ) {
         my ($mae, $rmse) = ($line =~ /MAE: ([0-9.]+), RMSE: ([0-9.]+)/);
-        $pr = rg( 0, $dist_range , $mae, 1 ) . "M $mae\e[0m  ";
-        $pr .= rg( 0, $dist_range , $rmse, 1 ) . "R $rmse\e[0m  ";
+        $mae_str .= ($mae_str ? ':' : '') . rg( 0, $dist_range , $mae, 1 ) . "$mae\e[0m";
+        $rmse_str .= ($rmse_str ? ':' : '') . rg( 0, $dist_range , $rmse, 1 ) . "$rmse\e[0m";
     }
-    if ( $line =~ /(Pearson|Spearman) correlation:/i ) {
-        my $letter = substr($1, 0, 1);
+    if ( $line =~ /Pearson correlation:/i ) {
         my ($sign, $corr, $pv) = ($line =~ /([ -])([0-9.]+) \(p-value ([0-9.]+)\)/);
-        $pr .= rg( 0, 1, $corr ) . "$letter$sign$corr\e[0m  ";
+        $pear_str .= ($pear_str ? ':' : '') . rg( 0, 1, $corr ) . format_corr("$sign$corr") . "\e[0m";
+    }
+    if ( $line =~ /Spearman correlation:/i ) {
+        my ($sign, $corr, $pv) = ($line =~ /([ -])([0-9.]+) \(p-value ([0-9.]+)\)/);
+        $spea_str .= ($spea_str ? ':' : '') . rg( 0, 1, $corr ) . format_corr("$sign$corr") . "\e[0m";
     }
 
 }
@@ -55,7 +58,10 @@ while ( my $line = <$fh> ) {
 close($fh);
 
 # Print the output
-print "$pr\e[0m";
+print $mae_str ? "M $mae_str\e[0m  " : "";
+print $rmse_str ? "R $rmse_str\e[0m  " : "";
+print $pear_str ? "P $pear_str\e[0m  " : "";
+print $spea_str ? "S $spea_str\e[0m  " : "";
 
 #
 # Subs
@@ -82,3 +88,8 @@ sub rg {
     return rgb_code( $r, $g, 0 );
 }
 
+sub format_corr {
+    my ($text) = @_;
+    $text =~ s/^ //;
+    return substr($text, 0, 5);
+}
