@@ -9,9 +9,10 @@ import numpy as np
 from ratpred.futil import write_outputs, read_outputs
 
 
-def stats_for_col(data, col_num):
+def stats_for_col(data, col_num, mask=None):
     """Transpose array of arrays + return a specific column (with original data grouped by rows)."""
-    return np.array(data).transpose()[col_num]
+    ret = np.array(data).transpose()[col_num]
+    return ret[mask] if mask else ret
 
 
 class Evaluator(object):
@@ -31,6 +32,7 @@ class Evaluator(object):
         self.dists = []
         self.aes = []  # absolute error
         self.sqes = []  # square error
+        self.total = np.zeros((len(self.target_cols),))
         self.correct = np.zeros((len(self.target_cols),))
 
     def append(self, inp, raw_trg, trg, raw_rat, rat):
@@ -40,10 +42,15 @@ class Evaluator(object):
         self.ratings.append(rat)
         self.raw_targets.append(raw_trg)
         self.targets.append(trg)
-        self.dists.append(abs(raw_rat - raw_trg))
-        self.aes.append(abs(rat - trg))
-        self.sqes.append((rat - trg) ** 2)
-        self.correct += (trg == rat).astype(np.float)
+        # ignore all NaNs in targets
+        mask = 1. - np.isnan(raw_trg)
+        self.total += mask
+        raw_trg = np.nan_to_num(raw_trg)
+        trg = np.nan_to_num(raw_trg)
+        self.dists.append(mask * abs(raw_rat - raw_trg))
+        self.aes.append(mask * abs(rat - trg))
+        self.sqes.append(mask * (rat - trg) ** 2)
+        self.correct += mask * (trg == rat).astype(np.float)
 
     def write_tsv(self, fname):
         """Write a TSV file containing all the prediction data so far."""
@@ -59,16 +66,17 @@ class Evaluator(object):
         """Return important statistics (incl. correlations) in a dictionary."""
         ret = {}
         for col_num, target_col in enumerate(self.target_cols):
-            pearson, pearson_pv = scipy.stats.pearsonr(stats_for_col(self.targets, col_num),
-                                                       stats_for_col(self.ratings, col_num))
-            spearman, spearman_pv = scipy.stats.spearmanr(stats_for_col(self.targets, col_num),
-                                                          stats_for_col(self.ratings, col_num))
-            ret[target_col] = {'dist_total': np.sum(stats_for_col(self.dists, col_num)),
-                               'dist_avg': np.mean(stats_for_col(self.dists, col_num)),
-                               'dist_stddev': np.std(stats_for_col(self.dists, col_num)),
-                               'mae': np.mean(stats_for_col(self.aes, col_num)),
-                               'rmse': np.sqrt(np.mean(stats_for_col(self.sqes, col_num))),
-                               'accuracy': float(self.correct[col_num]) / len(self.inputs),
+            mask = ~np.isnan(stats_for_col(self.raw_targets, col_num))
+            pearson, pearson_pv = scipy.stats.pearsonr(stats_for_col(self.targets, col_num, mask),
+                                                       stats_for_col(self.ratings, col_num, mask))
+            spearman, spearman_pv = scipy.stats.spearmanr(stats_for_col(self.targets, col_num, mask),
+                                                          stats_for_col(self.ratings, col_num, mask))
+            ret[target_col] = {'dist_total': np.sum(stats_for_col(self.dists, col_num, mask)),
+                               'dist_avg': np.mean(stats_for_col(self.dists, col_num, mask)),
+                               'dist_stddev': np.std(stats_for_col(self.dists, col_num, mask)),
+                               'mae': np.mean(stats_for_col(self.aes, col_num, mask)),
+                               'rmse': np.sqrt(np.mean(stats_for_col(self.sqes, col_num, mask))),
+                               'accuracy': self.correct[col_num] / self.total[col_num],
                                'pearson': pearson,
                                'pearson_pv': pearson_pv,
                                'spearman': spearman,
