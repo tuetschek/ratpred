@@ -476,8 +476,8 @@ class RatingPredictor(TFModel):
             self.da_input_shape = self.da_embs.get_embeddings_shape()
 
         # find the ranges of the targets (this needs to be global for all targets for simplicity)
-        self.outputs_range_lo = np.round(np.min(self.y)).astype(np.int)
-        self.outputs_range_hi = np.round(np.max(self.y)).astype(np.int)
+        self.outputs_range_lo = np.round(np.min(self.y[~np.isnan(self.y)])).astype(np.int)
+        self.outputs_range_hi = np.round(np.max(self.y[~np.isnan(self.y)])).astype(np.int)
         if self.predict_ints:  # var. number of binary outputs (based on coarseness & lo-hi)
             self.y = self._ratings_to_binary(self.y)
         else:  # just one real-valued output per aspect (rounded to desired coarseness)
@@ -551,15 +551,20 @@ class RatingPredictor(TFModel):
                                         self.inputs_ref if self.ref_enc else None,
                                         self.inputs_da if self.da_enc else None)
 
+            # mask for the cost -- do not learn on unannotated stuff
+            self.mask = tf.placeholder(tf.float32, shape=self.target.shape, name='aspect_mask')
+
         if self.predict_ints:
             # sigmoid cost -- predict a bunch of 1's and 0's (not just one 1)
             self.cost = tf.reduce_mean(tf.reduce_sum(
-                tf.nn.sigmoid_cross_entropy_with_logits(
-                    logits=self.output, labels=self.target, name='CE'),
+                tf.multiply(
+                    tf.nn.sigmoid_cross_entropy_with_logits(
+                        logits=self.output, labels=self.target, name='CE'),
+                    self.mask),
                 axis=1))
         else:
             # mean square error cost -- predict 1 number
-            self.cost = tf.reduce_mean(tf.square(self.target - self.output))
+            self.cost = tf.reduce_mean(tf.multiply(tf.square(self.target - self.output), self.mask))
 
         self.tb_logger.create_tensor_summaries(self.cost)
 
@@ -866,7 +871,10 @@ class RatingPredictor(TFModel):
 
             targets = self.y[inst_nos]
             targets = np.reshape(targets, (targets.shape[0], np.prod(targets.shape[1:])))
-            fd = {self.target: targets}
+            mask = 1. - np.isnan(targets)  # 1 for numbers, 0 for NaNs
+            targets = np.nan_to_num(targets, copy=False)
+
+            fd = {self.target: targets, self.mask: mask}
             self._add_inputs_to_feed_dict(fd,
                                           inputs_hyp=self.X_hyp[inst_nos] if self.hyp_enc else None,
                                           inputs_ref=self.X_ref[inst_nos] if self.ref_enc else None,
