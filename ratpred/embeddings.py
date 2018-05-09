@@ -54,6 +54,8 @@ class Word2VecEmbeddingExtract(EmbeddingExtract):
         return self.get_w2v_dict_size()
 
     def get_embeddings(self, sent):
+        if sent is None:  # empty sentences => just padding
+            sent = []
         sent = [re.sub(r'[0-9]', r'#', tok) if re.match(r'^[0-9][0-9.]+$', tok) else tok
                 for tok, _ in sent]
         embs = [self._w2v.vocab.get('<GO>').index]
@@ -115,6 +117,8 @@ class CharEmbeddingExtract(EmbeddingExtract):
 
     def get_embeddings(self, sent):
         """Get the embeddings of a sentence (list of word form/tag pairs)."""
+        if sent is None:
+            sent = []
         embs = [self.GO]
         for form, tag in sent:
             if len(embs) > 1:

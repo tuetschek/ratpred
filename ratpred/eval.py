@@ -12,7 +12,7 @@ from ratpred.futil import write_outputs, read_outputs
 def stats_for_col(data, col_num, mask=None):
     """Transpose array of arrays + return a specific column (with original data grouped by rows)."""
     ret = np.array(data).transpose()[col_num]
-    return ret[mask] if mask else ret
+    return ret[mask] if mask is not None else ret
 
 
 class Evaluator(object):

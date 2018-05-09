@@ -40,17 +40,25 @@ def read_data(filename, target_cols, das_type='cambridge',
     texts_hyp = [[(tok, None) for tok in preprocess_sent(da, sent)]
                  for da, sent in zip(das, data['system_ref'])]
 
+    # alternative reference with rating difference / use to compare
+    if 'system_ref2' in data.columns:
+        texts_hyp2 = [[(tok, None) for tok in preprocess_sent(da, sent)]
+                      for da, sent in zip(das, data['system_ref2'])]
+    else:
+        texts_hyp2 = [None] * len(texts_hyp)
+
     # DA delexicalization must take place after text delexicalization
     if das_type != 'text' and delex_das:
         das = [da.get_delexicalized(delex_slots) for da in das]
 
+    # fake data indicator
     if 'is_real' in data.columns:
         real_indics = [0 if indic == 0 else 1 for indic in data['is_real']]
     else:
         real_indics = [1 for _ in xrange(len(data))]
 
-    inputs = [(da, ref, hyp, ri)
-              for da, ref, hyp, ri in zip(das, texts_ref, texts_hyp, real_indics)]
+    inputs = [(da, ref, hyp, hyp2, ri)
+              for da, ref, hyp, hyp2, ri in zip(das, texts_ref, texts_hyp, texts_hyp2, real_indics)]
 
     targets = np.array(data[[target_cols] if not isinstance(target_cols, list) else target_cols],
                        dtype=np.float)

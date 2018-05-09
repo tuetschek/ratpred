@@ -405,21 +405,24 @@ class RatingPredictor(TFModel):
         das = [inp[0] for inp in inputs[:size]]
         refs = [inp[1] for inp in inputs[:size]]
         hyps = [inp[2] for inp in inputs[:size]]
+        hyp2s = [inp[3] for inp in inputs[:size]]
         if get_is_real:
-            irs = [inp[3] for inp in inputs[:size]]
-            return (das, refs, hyps, irs)
-        return (das, refs, hyps)
+            irs = [inp[4] for inp in inputs[:size]]
+            return (das, refs, hyps, hyp2s, irs)
+        return (das, refs, hyps, hyp2s)
 
     def _cut_valid_data(self):
         assert self.validation_size < len(self.train_das)
         self.valid_inputs = (self.train_das[-self.validation_size:],
                              self.train_refs[-self.validation_size:],
-                             self.train_hyps[-self.validation_size:])
+                             self.train_hyps[-self.validation_size:],
+                             self.train_hyp2s[-self.validation_size:])
         self.valid_y = self.y[-self.validation_size:]
         self.y = self.y[:-self.validation_size]
         self.train_das = self.train_das[:-self.validation_size]
         self.train_refs = self.train_refs[:-self.validation_size]
         self.train_hyps = self.train_hyps[:-self.validation_size]
+        self.train_hyp2s = self.train_hyp2s[:-self.validation_size]
         self.train_is_reals = self.train_is_reals[:-self.validation_size]
 
     def _init_training(self, inputs, targets,
@@ -430,7 +433,7 @@ class RatingPredictor(TFModel):
         """
         # store training data, make it smaller if necessary
         train_size = int(round(data_portion * len(inputs)))
-        self.train_das, self.train_refs, self.train_hyps, self.train_is_reals = (
+        self.train_das, self.train_refs, self.train_hyps, self.train_hyp2s, self.train_is_reals = (
             self._divide_inputs(inputs, train_size, get_is_real=True))
         self.y = targets[:train_size]
 
@@ -449,6 +452,8 @@ class RatingPredictor(TFModel):
             self.dict_size = self.embs.init_dict(self.train_hyps)
         else:
             self.dict_size = len(self.embs.dict) + 1
+        self.dict_size = self.embs.init_dict([hyp2 for hyp2 in self.train_hyp2s if hyp2 is not None],
+                                             dict_ord=self.dict_size)  # ignore null 2nd hyps for initialization
         if self.ref_enc:
             self.dict_size = self.embs.init_dict(self.train_refs, dict_ord=self.dict_size)
         if self.da_enc:
@@ -465,6 +470,8 @@ class RatingPredictor(TFModel):
         # convert training data to indexes
         if self.hyp_enc:
             self.X_hyp = np.array([self.embs.get_embeddings(sent) for sent in self.train_hyps])
+            self.X_hyp2 = np.array([self.embs.get_embeddings(sent) for sent in self.train_hyp2s])
+            self.X_has_hyp2 = np.array([sent is not None for sent in self.train_hyp2s], dtype=np.float)
         if self.ref_enc:
             self.X_ref = np.array([self.embs.get_embeddings(sent) for sent in self.train_refs])
         if self.da_enc:
@@ -527,6 +534,8 @@ class RatingPredictor(TFModel):
             if self.hyp_enc:
                 self.inputs_hyp = [tf.placeholder(tf.int32, [None], name=('enc_inp_hyp-%d' % i))
                                    for i in xrange(self.input_shape[0])]
+                self.inputs_hyp2 = [tf.placeholder(tf.int32, [None], name=('enc_inp_hyp2-%d' % i))
+                                    for i in xrange(self.input_shape[0])]
             if self.ref_enc:
                 self.inputs_ref = [tf.placeholder(tf.int32, [None], name=('enc_inp_ref-%d' % i))
                                    for i in xrange(self.input_shape[0])]
@@ -547,25 +556,47 @@ class RatingPredictor(TFModel):
                 # will also build s2s cost, optimizer, and training function
                 self._build_seq2seq_net(self.inputs_da, self.inputs_hyp)
             else:
+                # build encoders + final classifier
                 self._build_classif_net(self.inputs_hyp if self.hyp_enc else None,
+                                        self.inputs_hyp2 if self.hyp_enc else None,
                                         self.inputs_ref if self.ref_enc else None,
                                         self.inputs_da if self.da_enc else None)
 
-            # mask for the cost -- do not learn on unannotated stuff
-            self.mask = tf.placeholder(tf.float32, shape=self.target.shape, name='aspect_mask')
+            # mask for the cost -- do not learn on unannotated stuff if we don't have annotation
+            # for all aspects
+            self.aspect_mask = tf.placeholder(tf.float32, shape=self.target.shape, name='aspect_mask')
 
+        # classification cost
         if self.predict_ints:
             # sigmoid cost -- predict a bunch of 1's and 0's (not just one 1)
-            self.cost = tf.reduce_mean(tf.reduce_sum(
+            self.classif_cost = tf.reduce_mean(tf.reduce_sum(
                 tf.multiply(
                     tf.nn.sigmoid_cross_entropy_with_logits(
                         logits=self.output, labels=self.target, name='CE'),
-                    self.mask),
+                    self.aspect_mask),
                 axis=1))
         else:
             # mean square error cost -- predict 1 number
-            self.cost = tf.reduce_mean(tf.multiply(tf.square(self.target - self.output), self.mask))
+            self.classif_cost = tf.reduce_mean(tf.multiply(tf.square(self.target - self.output),
+                                                           self.aspect_mask))
 
+        # pairwise ranking cost
+        if self.hyp_enc:
+            with tf.variable_scope(self.scope_name):
+                self.ranking_mask = tf.placeholder(tf.float32, shape=self.target.shape,
+                                                   name='ranking_mask')
+                # pairwise hinge loss
+                pairwise_hinge = tf.maximum(0.0, 1.0 - self.rank_diff)
+                # XXX TODO have the option of pairwise square loss
+                self.ranking_cost = tf.reduce_mean(tf.multiply(pairwise_hinge, self.ranking_mask))
+        else:
+            # ignore any ranking cost if we don't have hyps
+            self.ranking_cost = tf.constant(0.0)
+
+        self.cost = self.classif_cost + self.ranking_cost
+
+        self.tb_logger.create_tensor_summaries(self.classif_cost)
+        self.tb_logger.create_tensor_summaries(self.ranking_cost)
         self.tb_logger.create_tensor_summaries(self.cost)
 
         self.optimizer = tf.train.AdamOptimizer(self.alpha)
@@ -592,11 +623,12 @@ class RatingPredictor(TFModel):
                         tf.nn.dropout(variable, self.dropout_keep_prob),
                         variable)
 
-    def _build_embs(self, enc_inputs_hyp=None, enc_inputs_ref=None, enc_inputs_da=None):
+    def _build_embs(self, enc_inputs_hyp=None, enc_inputs_hyp2=None,
+                    enc_inputs_ref=None, enc_inputs_da=None):
         """Build embedding lookups over the inputs.
         @return: a triple of embedding lookup tensors (hyps, refs, das, some of them may be None)
         """
-        enc_in_hyp_emb, enc_in_ref_emb, enc_in_da_emb = None, None, None
+        enc_in_hyp_emb, enc_in_hyp2_emb, enc_in_ref_emb, enc_in_da_emb = None, None, None, None
         # build embeddings
         with tf.variable_scope('embs'):
             if self.word2vec_embs:
@@ -629,8 +661,10 @@ class RatingPredictor(TFModel):
                     return self._dropout(tf.nn.embedding_lookup(self.emb_storage, enc_inp))
 
         if enc_inputs_hyp is not None:
-            with tf.variable_scope('enc_hyp'):
+            with tf.variable_scope('enc_hyp') as scope:
                 enc_in_hyp_emb = [apply_emb(enc_inp) for enc_inp in enc_inputs_hyp]
+                scope.reuse_variables()
+                enc_in_hyp2_emb = [apply_emb(enc_inp) for enc_inp in enc_inputs_hyp2]
 
         if enc_inputs_ref is not None:
             with self._get_ref_variable_scope():
@@ -647,7 +681,7 @@ class RatingPredictor(TFModel):
                 enc_in_da_emb = [self._dropout(tf.nn.embedding_lookup(self.da_emb_storage, enc_inp))
                                  for enc_inp in enc_inputs_da]
 
-        return enc_in_hyp_emb, enc_in_ref_emb, enc_in_da_emb
+        return enc_in_hyp_emb, enc_in_hyp2_emb, enc_in_ref_emb, enc_in_da_emb
 
     def _get_ref_variable_scope(self):
         """Get the correct variable scope for reference encoder; depending on whether the system output and
@@ -659,13 +693,14 @@ class RatingPredictor(TFModel):
             scope = tf.variable_scope('enc_ref')
         return scope
 
-    def _build_classif_net(self, enc_inputs_hyp=None, enc_inputs_ref=None, enc_inputs_da=None):
+    def _build_classif_net(self, enc_inputs_hyp=None, enc_inputs_hyp2=None,
+                           enc_inputs_ref=None, enc_inputs_da=None):
         """Build the rating prediction RNN structure.
         @return: TensorFlow Output with the prediction
         """
         # create embedding lookups
-        enc_in_hyp_emb, enc_in_ref_emb, enc_in_da_emb = self._build_embs(
-            enc_inputs_hyp, enc_inputs_ref, enc_inputs_da)
+        enc_in_hyp_emb, enc_in_hyp2_emb, enc_in_ref_emb, enc_in_da_emb = self._build_embs(
+            enc_inputs_hyp, enc_inputs_hyp2, enc_inputs_ref, enc_inputs_da)
 
         # select RNN type (ltr or bidi)
         rnn_func = functools.partial(tf.contrib.rnn.static_rnn,
@@ -675,9 +710,12 @@ class RatingPredictor(TFModel):
                                          cell_fw=self.cell, cell_bw=self.cell, dtype=tf.float32)
 
         # apply RNN over embeddings
+        enc_state_hyp, enc_state_hyp2, enc_state_ref, enc_state_da = None, None, None, None
         if enc_inputs_hyp is not None:
-            with tf.variable_scope('enc_hyp'):
+            with tf.variable_scope('enc_hyp') as scope:
                 enc_state_hyp = rnn_func(inputs=enc_in_hyp_emb)[1:]
+                scope.reuse_variables()
+                enc_state_hyp2 = rnn_func(inputs=enc_in_hyp2_emb)[1:]
 
         if enc_inputs_ref is not None:
             with self._get_ref_variable_scope():
@@ -692,16 +730,22 @@ class RatingPredictor(TFModel):
             self._build_da_classifier(tf.concat(self._flatten_enc_state(enc_state_hyp), axis=1))
 
         # concatenate last LSTM states & outputs (works for bidi & multilayer LSTMs&GRUs)
-        last_outs_and_states = tf.concat((self._flatten_enc_state(enc_state_hyp)
-                                          if enc_inputs_hyp is not None else []) +
-                                         (self._flatten_enc_state(enc_state_ref)
-                                          if enc_inputs_ref is not None else []) +
-                                         (self._flatten_enc_state(enc_state_da)
-                                          if enc_inputs_da is not None else []),
-                                         axis=1, name='last_outs_and_states')
+        def concat_enc_states(hyp, ref, da, var_name):
+            return tf.concat((self._flatten_enc_state(hyp) +
+                              self._flatten_enc_state(ref) +
+                              self._flatten_enc_state(da)),
+                             axis=1, name=var_name)
+
+        last_outs_and_states = concat_enc_states(enc_state_hyp, enc_state_ref, enc_state_da,
+                                                 'last_outs_and_states')
+        if enc_inputs_hyp is not None:
+            last_outs_and_states2 = concat_enc_states(enc_state_hyp2, enc_state_ref, enc_state_da,
+                                                      'last_outs_and_states2')
+        else:
+            last_outs_and_states2 = None
 
         # build final FF layers + self.output
-        self._build_final_classifier(last_outs_and_states)
+        self._build_final_classifier(last_outs_and_states, last_outs_and_states2)
 
     def _build_da_classifier(self, final_state):
 
@@ -728,12 +772,13 @@ class RatingPredictor(TFModel):
             self.daclassif_optimizer = tf.train.AdamOptimizer(self.alpha)
             self.daclassif_train_func = self.daclassif_optimizer.minimize(self.daclassif_cost)
 
-    def _build_final_classifier(self, final_state):
+    def _build_final_classifier(self, final_state, final_state2):
         """Build the final feedforward layers for the classification."""
         self.tb_logger.create_tensor_summaries(final_state)
         state_size = int(final_state.get_shape()[1])
 
         hidden = final_state
+        hidden2 = final_state2
         if self.tanh_layers > 0:
             with tf.variable_scope('hidden'):
                 for layer_no in xrange(self.tanh_layers):
@@ -745,6 +790,9 @@ class RatingPredictor(TFModel):
                                           initializer=tf.constant_initializer())
                     hidden = tf.tanh(tf.matmul(hidden, h_w) + h_b)
                     self.tb_logger.create_tensor_summaries(hidden)
+                    if final_state2 is not None:
+                        hidden2 = tf.tanh(tf.matmul(hidden2, h_w) + h_b)
+                        self.tb_logger.create_tensor_summaries(hidden2)
 
         with tf.variable_scope('classif'):
             # even though the outputs are 2-D, the final layer is flattened for simple
@@ -756,8 +804,14 @@ class RatingPredictor(TFModel):
             self.tb_logger.create_tensor_summaries(w)
             self.tb_logger.create_tensor_summaries(b)
 
-        # create output variable
-        self.output = tf.matmul(hidden, w) + b
+            # create output variable
+            self.output = tf.matmul(hidden, w) + b
+            if final_state2 is not None:
+                self.output2 = tf.matmul(hidden2, w) + b
+            else:
+                self.output2 = tf.constant(0.0, shape=self.output.shape)
+
+            self.rank_diff = self.output - self.output2
 
     def _build_seq2seq_net(self, enc_inputs, dec_inputs):
         """Build the seq2seq part of the network, over the given DA/system output inputs."""
@@ -805,6 +859,8 @@ class RatingPredictor(TFModel):
 
     def _flatten_enc_state(self, enc_state):
         """Flatten up to 3 dimensions of tuples, return 1-D array."""
+        if enc_state is None:
+            return []
         if isinstance(enc_state, tuple):
             if isinstance(enc_state[0], tuple):
                 if isinstance(enc_state[0][0], tuple):
@@ -814,7 +870,7 @@ class RatingPredictor(TFModel):
         return [enc_state]
 
     def _add_inputs_to_feed_dict(self, fd,
-                                 inputs_hyp=None, inputs_ref=None, inputs_da=None,
+                                 inputs_hyp=None, inputs_hyp2=None, inputs_ref=None, inputs_da=None,
                                  inputs_s2s_trg=False, inputs_daclassif_trg=None,
                                  train_mode=False):
         """Add inputs into TF feed_dict."""
@@ -824,6 +880,9 @@ class RatingPredictor(TFModel):
             # TODO check for none when squeezing ?
             sliced_hyp = np.squeeze(np.array(np.split(inputs_hyp, len(inputs_hyp[0]), axis=1)), axis=2)
             for input_, slice_ in zip(self.inputs_hyp, sliced_hyp):
+                fd[input_] = slice_
+            sliced_hyp2 = np.squeeze(np.array(np.split(inputs_hyp2, len(inputs_hyp2[0]), axis=1)), axis=2)
+            for input_, slice_ in zip(self.inputs_hyp2, sliced_hyp2):
                 fd[input_] = slice_
 
             if inputs_s2s_trg:
@@ -855,16 +914,20 @@ class RatingPredictor(TFModel):
         log_debug("Train order: " + str(self.train_order))
 
         pass_insts = 0
-        pass_cost = 0.0
-        pass_valid = np.zeros(self.y.shape[1])
+        pass_cost, pass_classif_cost, pass_ranking_cost = 0.0, 0.0, 0.0
+        pass_valid = np.zeros(self.y.shape[1])  # float for easy accuracy computation
         pass_corr = np.zeros(self.y.shape[1], dtype=int)
         pass_dist = np.zeros(self.y.shape[1])
+        pass_corr_ranks = np.zeros(self.y.shape[1], dtype=int)
+        pass_valid_ranks = np.zeros(self.y.shape[1])  # float for easy accuracy computation
 
         for inst_nos in self._batches():
 
             pass_insts += len(inst_nos)
             log_debug('INST-NOS: ' + str(inst_nos))
             log_debug("\n".join(' '.join([tok for tok, _ in self.train_hyps[i]]) + "\n" +
+                                ' '.join([tok for tok, _ in self.train_hyp2s[i]]
+                                         if self.train_hyp2s[i] is not None else ['<NONE>']) + "\n" +
                                 ' '.join([tok for tok, _ in self.train_refs[i]]) + "\n" +
                                 unicode(self.train_das[i]) + "\n" +
                                 unicode(self.y[i])
@@ -872,56 +935,82 @@ class RatingPredictor(TFModel):
 
             targets = self.y[inst_nos]
             targets = np.reshape(targets, (targets.shape[0], np.prod(targets.shape[1:])))
-            mask = 1. - np.isnan(targets)  # 1 for numbers, 0 for NaNs
+            aspect_mask = 1. - np.isnan(targets)  # 1 for numbers, 0 for NaNs
             targets = np.nan_to_num(targets, copy=False)
 
-            fd = {self.target: targets, self.mask: mask}
+            ranking_mask = np.dot(self.X_has_hyp2[inst_nos].reshape(len(inst_nos), 1),
+                                  np.ones((1, self.y.shape[1])))
+            ranking_mask *= aspect_mask
+            aspect_mask *= 1. - ranking_mask
+
+            fd = {self.target: targets,
+                  self.aspect_mask: aspect_mask,
+                  self.ranking_mask: ranking_mask}
             self._add_inputs_to_feed_dict(fd,
                                           inputs_hyp=self.X_hyp[inst_nos] if self.hyp_enc else None,
+                                          inputs_hyp2=self.X_hyp2[inst_nos] if self.hyp_enc else None,
                                           inputs_ref=self.X_ref[inst_nos] if self.ref_enc else None,
                                           inputs_da=self.X_da[inst_nos] if self.da_enc else None,
                                           train_mode=True)
 
-            required = [self.output, self.cost, self.train_func]
+            required = [self.output, self.rank_diff,
+                        self.classif_cost, self.ranking_cost, self.cost,
+                        self.train_func]
             if pass_insts == len(self.train_hyps):  # last batch
                 required.append(self.tensor_summaries)
             outputs = self.session.run(required, feed_dict=fd)
             results = outputs[0]
-            cost = outputs[1]
+            classif_cost, ranking_cost, total_cost = outputs[2:5]
             if pass_insts == len(self.train_hyps):
-                self.tb_logger.log(pass_no, outputs[3])
+                self.tb_logger.log(pass_no, outputs[-1])
 
-            valid = np.sum(mask, axis=0)
+            # rating evaluation
+            valid = np.sum(aspect_mask, axis=0)
             pred = self._adjust_output(results)
             true = self._adjust_output(targets, no_sigmoid=True)
-            dist = np.sum(mask * np.abs(pred - true), axis=0)
-            corr = np.sum(mask.astype(np.int) *
+            dist = np.sum(aspect_mask * np.abs(pred - true), axis=0)
+            corr = np.sum(aspect_mask.astype(np.int) *
                           (self._round_rating(pred) == self._round_rating(true)), axis=0)
 
             log_debug('R: ' + str(results))
             log_debug('COST: %f, corr %s/%d, dist %s' %
-                      (cost, ':'.join(['%d' % c for c in corr]),
+                      (classif_cost, ':'.join(['%d' % c for c in corr]),
                        len(inst_nos), ':'.join(['%.3f' % d for d in dist])))
 
             pass_valid += valid
             pass_dist += dist
             pass_corr += corr
-            pass_cost += cost
+            pass_classif_cost += classif_cost
+
+            # ranking evaluation
+            rank_results = outputs[1]
+            corr_ranks = np.sum((rank_results > 0.0).astype(np.float) * ranking_mask, axis=0).astype(np.int)
+            pass_corr_ranks += corr_ranks
+            pass_valid_ranks += np.sum(ranking_mask, axis=0)
+            pass_ranking_cost += ranking_cost
+
+            pass_cost += total_cost
 
         # print and return statistics
         self._print_pass_stats(pass_no, datetime.timedelta(seconds=(time.time() - pass_start_time)),
-                               pass_cost, pass_corr, pass_dist, pass_valid)
+                               pass_classif_cost, pass_corr, pass_dist, pass_valid,
+                               pass_ranking_cost, pass_corr_ranks, pass_valid_ranks)
         return pass_cost
 
-    def _print_pass_stats(self, pass_no, time, cost, corr, dist, n_inst):
+    def _print_pass_stats(self, pass_no, time, cost, corr, dist, n_inst,
+                          rank_cost, rank_corr, rank_n_inst):
+
         acc = ':'.join(['%.3f' % a for a in (corr / n_inst)])
+        rank_acc = ':'.join(['%.3f' % a for a in (rank_corr / rank_n_inst)])
         avg_dist = ':'.join(['%.3f' % d for d in (dist / n_inst)])
-        log_info('PASS %03d: duration %s, cost %f, acc %s, avg. dist %s' %
-                 (pass_no, str(time), cost, acc, avg_dist))
+        log_info('PASS %03d: duration %s, cost %f, rcost %f, acc %s, racc %s, avg. dist %s' %
+                 (pass_no, str(time), cost, rank_cost, acc, rank_acc, avg_dist))
         self.tb_logger.add_to_log(pass_no, {'train_pass_duration': time.total_seconds(),
-                                            'train_cost': cost,
+                                            'train_classif_cost': cost,
                                             'train_accuracy': corr / n_inst,
-                                            'train_dist_avg': dist / n_inst})
+                                            'train_dist_avg': dist / n_inst,
+                                            'train_rank_acc': rank_corr / rank_n_inst,
+                                            'train_rank_cost': rank_cost})
 
     def _print_valid_stats(self, pass_no, results):
         """Print validation results for the given training pass number."""
@@ -1029,6 +1118,7 @@ class RatingPredictor(TFModel):
         """
         Evaluate the predictor on the given inputs & targets; possibly also write to a file.
         """
+        # XXX TODO fix for hyp2s -- should provide ranking for these
         if isinstance(inputs, tuple):
             das, input_refs, input_hyps = inputs[:3]  # ignore is_real indicators
         else:
