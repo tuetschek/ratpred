@@ -1,13 +1,15 @@
-mr	orig_ref	system_ref	quality	naturalness
-inform(value=good)	this is good	this is bad	1	6
-inform(value=good)	this is good	this is good	6	6
-inform(value=mediocre)	this is mediocre	this is good	3	6
-inform(value=good)	that is good	that is good	6	6
-inform(value=bad)	that is bad	that is bad	6	6
-inform(value=bad)	that is bad	bad bad bad	6	1
-inform(value=good)	that is good	good good good	6	1
-inform(value=good)	that is good	bad	1	3
-inform(value=bad)	this is bad	bad	6	3
-inform(value=bad)	that is bad	good good good	1	1
-inform(value=mediocre)	that is mediocre	this is mediocre	6	
-inform(value=mediocre)	that is mediocre	this is good		6
+mr	orig_ref	system_ref	quality	naturalness	system_ref2
+inform(value=good)	this is good	this is bad	1	6	
+inform(value=good)	this is good	this is good	6	6	
+inform(value=mediocre)	this is mediocre	this is good	3	6	
+inform(value=good)	that is good	that is good	6	6	
+inform(value=bad)	that is bad	that is bad	6	6	
+inform(value=bad)	that is bad	bad bad bad	6	1	
+inform(value=good)	that is good	good good good	6	1	
+inform(value=good)	that is good	bad	1	3	
+inform(value=bad)	this is bad	bad	6	3	
+inform(value=bad)	that is bad	good good good	1	1	
+inform(value=mediocre)	that is mediocre	this is mediocre	6		
+inform(value=mediocre)	that is mediocre	this is good		6	
+inform(value=bad)	that is bad	that is horrible	1		that is bad
+inform(value=mediocre)	that is mediocre	this is mediocre		1	mediocre

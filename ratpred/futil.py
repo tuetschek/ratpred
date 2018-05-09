@@ -43,6 +43,7 @@ def read_data(filename, target_cols, das_type='cambridge',
     # alternative reference with rating difference / use to compare
     if 'system_ref2' in data.columns:
         texts_hyp2 = [[(tok, None) for tok in preprocess_sent(da, sent)]
+                      if isinstance(sent, basestring) else None
                       for da, sent in zip(das, data['system_ref2'])]
     else:
         texts_hyp2 = [None] * len(texts_hyp)

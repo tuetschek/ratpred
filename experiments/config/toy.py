@@ -6,7 +6,7 @@ from __future__ import unicode_literals
 config = {
           'language': 'en',
           'selector': '',
-          'passes': 1000,
+          'passes': 1200,
           'min_passes': 0,
           'pretrain_passes': 0,
           'randomize': True,
