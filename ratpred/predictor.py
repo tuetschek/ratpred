@@ -363,7 +363,7 @@ class RatingPredictor(TFModel):
         results['cost_comb'] = comb_cost
         return comb_cost
 
-    def rate(self, hyps=None, refs=None, das=None):
+    def rate(self, hyps=None, hyp2s=None, refs=None, das=None):
         """
         Rate a pair of reference sentence + system output hypothesis.
 
@@ -372,12 +372,13 @@ class RatingPredictor(TFModel):
         @return: the rating, as a floating point number (not rounded to prediction boundaries)
         """
         inputs_hyp = np.array([self.embs.get_embeddings(sent) for sent in hyps]) if hyps else None
+        inputs_hyp2 = np.array([self.embs.get_embeddings(sent) for sent in hyp2s]) if hyp2s else None
         inputs_ref = np.array([self.embs.get_embeddings(sent) for sent in refs]) if refs else None
         inputs_da = np.array([self.da_embs.get_embeddings(da) for da in das]) if das else None
         fd = {}
-        self._add_inputs_to_feed_dict(fd, inputs_hyp, inputs_ref, inputs_da)
-        val = self.session.run(self.output, feed_dict=fd)
-        return self._adjust_output(val).astype(float)
+        self._add_inputs_to_feed_dict(fd, inputs_hyp, inputs_hyp2, inputs_ref, inputs_da)
+        val = self.session.run([self.output, self.rank_diff], feed_dict=fd)
+        return self._adjust_output(val[0]).astype(float), val[1]
 
     def _adjust_output(self, val, no_sigmoid=False):
         if self.predict_ints:
@@ -1118,20 +1119,26 @@ class RatingPredictor(TFModel):
         """
         Evaluate the predictor on the given inputs & targets; possibly also write to a file.
         """
-        # XXX TODO fix for hyp2s -- should provide ranking for these
         if isinstance(inputs, tuple):
-            das, input_refs, input_hyps = inputs[:3]  # ignore is_real indicators
+            das, input_refs, input_hyps, input_hyp2s = inputs[:4]  # ignore is_real indicators
         else:
-            das, input_refs, input_hyps = self._divide_inputs(inputs)
+            das, input_refs, input_hyps, input_hyp2s = self._divide_inputs(inputs)
         evaler = Evaluator(self.target_cols)
-        for da, input_ref, input_hyp, raw_target in zip(das, input_refs, input_hyps, raw_targets):
-            raw_rating = self.rate([input_hyp] if self.hyp_enc else None,
-                                   [input_ref] if self.ref_enc else None,
-                                   [da] if self.da_enc else None)[0]  # remove the "batch" dimension
+        for da, input_ref, input_hyp, input_hyp2, raw_target in zip(
+                das, input_refs, input_hyps, input_hyp2s, raw_targets):
+
+            raw_rating, raw_rank_diff = self.rate(
+                    [input_hyp] if self.hyp_enc else None,
+                    [input_hyp2] if self.hyp_enc else None,
+                    [input_ref] if self.ref_enc else None,
+                    [da] if self.da_enc else None)
+            raw_rating = raw_rating[0] # remove the "batch" dimension
+            raw_rank_diff = raw_rank_diff[0]
             rating = self._round_rating(raw_rating)
             target = self._round_rating(raw_target)
-            evaler.append((da, input_ref, input_hyp),
-                          raw_target, target, raw_rating, rating)
+            rank_ok = (raw_rank_diff > 0).astype(np.int)
+            evaler.append((da, input_ref, input_hyp, input_hyp2),
+                          raw_target, target, raw_rating, rating, raw_rank_diff, rank_ok)
         if output_file:
             evaler.write_tsv(output_file)
         return evaler.get_stats()

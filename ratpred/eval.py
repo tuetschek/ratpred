@@ -34,23 +34,34 @@ class Evaluator(object):
         self.sqes = []  # square error
         self.total = np.zeros((len(self.target_cols),))
         self.correct = np.zeros((len(self.target_cols),))
+        self.rank_total = np.zeros((len(self.target_cols),))
+        self.rank_ok = np.zeros((len(self.target_cols),))
+        self.rank_loss = np.zeros((len(self.target_cols),))
 
-    def append(self, inp, raw_trg, trg, raw_rat, rat):
+    def append(self, inp, raw_trg, trg, raw_rat, rat, raw_rank_diff, rank_ok):
         """Append one rating (along with input & target), update statistics."""
         self.inputs.append(inp)
         self.raw_ratings.append(raw_rat)
         self.ratings.append(rat)
         self.raw_targets.append(raw_trg)
         self.targets.append(trg)
-        # ignore all NaNs in targets
-        mask = 1. - np.isnan(raw_trg)
-        self.total += mask
+        # mask stuff that should not be evaluated
+        aspect_mask = 1. - np.isnan(raw_trg)
+        ranking_mask = int(inp[3] is not None) * np.ones(rank_ok.shape)
+        ranking_mask *= aspect_mask
+        aspect_mask *= 1. - ranking_mask
+        # rating stats
+        self.total += aspect_mask
         raw_trg = np.nan_to_num(raw_trg)
         trg = np.nan_to_num(raw_trg)
-        self.dists.append(mask * abs(raw_rat - raw_trg))
-        self.aes.append(mask * abs(rat - trg))
-        self.sqes.append(mask * (rat - trg) ** 2)
-        self.correct += mask * (trg == rat).astype(np.float)
+        self.dists.append(aspect_mask * abs(raw_rat - raw_trg))
+        self.aes.append(aspect_mask * abs(rat - trg))
+        self.sqes.append(aspect_mask * (rat - trg) ** 2)
+        self.correct += aspect_mask * (trg == rat).astype(np.float)
+        # ranking stats
+        self.rank_total += ranking_mask
+        self.rank_ok += ranking_mask * rank_ok
+        self.rank_loss += ranking_mask * np.maximum(- raw_rank_diff, np.zeros_like(raw_rank_diff))
 
     def write_tsv(self, fname):
         """Write a TSV file containing all the prediction data so far."""
@@ -64,9 +75,13 @@ class Evaluator(object):
 
     def get_stats(self):
         """Return important statistics (incl. correlations) in a dictionary."""
+        import pudb; pu.db
         ret = {}
         for col_num, target_col in enumerate(self.target_cols):
             mask = ~np.isnan(stats_for_col(self.raw_targets, col_num))
+            rank_mask = np.array([inp[3] is not None for inp in self.inputs])
+            rank_mask &= mask
+            mask &= ~rank_mask
             pearson, pearson_pv = scipy.stats.pearsonr(stats_for_col(self.targets, col_num, mask),
                                                        stats_for_col(self.ratings, col_num, mask))
             spearman, spearman_pv = scipy.stats.spearmanr(stats_for_col(self.targets, col_num, mask),
@@ -77,6 +92,9 @@ class Evaluator(object):
                                'mae': np.mean(stats_for_col(self.aes, col_num, mask)),
                                'rmse': np.sqrt(np.mean(stats_for_col(self.sqes, col_num, mask))),
                                'accuracy': self.correct[col_num] / self.total[col_num],
+                               'rank_acc': self.rank_ok[col_num] / self.rank_total[col_num],
+                               'rank_loss_total': self.rank_loss[col_num],
+                               'rank_loss_avg': self.rank_loss[col_num] / self.rank_total[col_num],
                                'pearson': pearson,
                                'pearson_pv': pearson_pv,
                                'spearman': spearman,

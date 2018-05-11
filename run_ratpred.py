@@ -59,6 +59,9 @@ def test(args):
                  (tc.upper(), results[tc]['pearson'], results[tc]['pearson_pv']))
         log_info("%s Spearman correlation: %.3f (p-value %.3f)" %
                  (tc.upper(), results[tc]['spearman'], results[tc]['spearman_pv']))
+        log_info("%s Pairwise rank accuracy: %.3f" % (tc.upper(), results[tc]['rank_acc']))
+        log_info("%s Pairwise rank loss: %.3f (avg: %.3f)" %
+                 (tc.upper(), results[tc]['rank_loss_total'], results[tc]['rank_loss_avg']))
 
 
 def main():
