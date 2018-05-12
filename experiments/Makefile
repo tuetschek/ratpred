@@ -6,7 +6,7 @@
 SHELL = /bin/bash
 RATPRED = ../run_ratpred.py
 MEM = 4g
-CPUS = 4
+CPUS = 6
 
 # XXX Replace this with your batch queue engine system command !
 QP = --engine=slurm --queue=amd-longq
