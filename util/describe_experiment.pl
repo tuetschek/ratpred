@@ -82,9 +82,19 @@ if ($portion < 1.0){
 $training_set .= ' -slotn' if ( $config_data =~ /'delex_slot_names'\s*:\s*True/ );
 $training_set .= ' -dlxda' if ( $config_data =~ /'delex_das'\s*:\s*True/ );
 $training_set .= ' +lex' if ( $config_data !~ /'delex_slots'\s*:\s*'[^']/ );
-my $target_col = ( $config_data =~ /'target_col'\s*:\s*'([^']*)'/ )[0] // 'quality';
-$target_col = substr($target_col, 0, 3);
-$target_col =~ s/qua/qlt/;
+
+my $target_col = 'Q';  # quality is the default
+if ($config_data =~ /'target_col'\s*:\s*\[\s*([^\]]*)\]/){
+    $target_col = $1;
+    $target_col =~ s/['\s,]+/ /g;
+    $target_col =~ s/\b([a-z])[a-z]*/$1/g;
+    $target_col =~ s/ //g;
+    $target_col = uc($target_col);
+}
+elsif ($config_data =~ /'target_col'\s*:\s*'([^']*)'/){
+    $target_col = $1;
+    $target_col = uc(substr($target_col, 0, 1));
+}
 $training_data = $training_set . ' -> ' . $target_col;
 
 
