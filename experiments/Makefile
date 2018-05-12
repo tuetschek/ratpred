@@ -30,6 +30,7 @@ endif
 OVERALL_SCORES = ../util/overall_scores.py
 GREP_SCORES = ../util/grep_scores.pl --dist-range=2
 DESC_EXP = ../util/describe_experiment.pl
+NOWRAP = ../util/nowrap.pl
 NUM_EXP = 20  # number of experiments to list in `make desc'
 
 LOGFILES = $$file/R.*test* $$file/{ratpred_test.,test.,}log.txt # logfile pattern to use for score printing
@@ -127,16 +128,17 @@ help:
 
 # List all experiments, find scores in logs (of various versions)
 desc:
-	@ls -d $(RUNS_DIR)/* | sort | tail -n $(NUM_EXP) | while read file; do \
+	@COLS=`tput cols`; \
+	ls -d $(RUNS_DIR)/* | sort | tail -n $(NUM_EXP) | while read file; do \
 		if [[ -f $$file/$(SCOREFILE) && -z "$(REFRESH)" ]]; then \
-			cat $$file/$(SCOREFILE) ; \
+			cat $$file/$(SCOREFILE) | $(NOWRAP) $$COLS; \
 			continue ; \
 		fi ; \
 		echo -ne $$file | sed 's/runs\///;s/_/  /;s/_/ /;s/_.*/: /;s/  20/  /;s/-[0-9][0-9]  /  /;' > $$file/$(SCOREFILE);  \
 		$(GREP_SCORES) $(LOGFILES) >> $$file/$(SCOREFILE) ; \
 		cat $$file/ABOUT | tr  '\n' ' ' >> $$file/$(SCOREFILE); \
 		echo >> $$file/$(SCOREFILE); \
-		cat $$file/$(SCOREFILE); \
+		cat $$file/$(SCOREFILE) | $(NOWRAP) $$COLS; \
 	done
 
 printvars:
