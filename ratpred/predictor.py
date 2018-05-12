@@ -1131,11 +1131,12 @@ class RatingPredictor(TFModel):
                 das, input_refs, input_hyps, input_hyp2s, raw_targets):
 
             raw_rating, raw_rank_diff = self.rate(
-                    [input_hyp] if self.hyp_enc else None,
-                    [input_hyp2] if self.hyp_enc else None,
-                    [input_ref] if self.ref_enc else None,
-                    [da] if self.da_enc else None)
-            raw_rating = raw_rating[0] # remove the "batch" dimension
+                [input_hyp] if self.hyp_enc else None,
+                [input_hyp2] if self.hyp_enc else None,
+                [input_ref] if self.ref_enc else None,
+                [da] if self.da_enc else None
+            )
+            raw_rating = raw_rating[0]  # remove the "batch" dimension
             raw_rank_diff = raw_rank_diff[0]
             rating = self._round_rating(raw_rating)
             target = self._round_rating(raw_target)
