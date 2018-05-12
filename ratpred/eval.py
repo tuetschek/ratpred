@@ -75,7 +75,6 @@ class Evaluator(object):
 
     def get_stats(self):
         """Return important statistics (incl. correlations) in a dictionary."""
-        import pudb; pu.db
         ret = {}
         for col_num, target_col in enumerate(self.target_cols):
             mask = ~np.isnan(stats_for_col(self.raw_targets, col_num))

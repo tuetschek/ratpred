@@ -1006,12 +1006,15 @@ class RatingPredictor(TFModel):
         avg_dist = ':'.join(['%.3f' % d for d in (dist / n_inst)])
         log_info('PASS %03d: duration %s, cost %f, rcost %f, acc %s, racc %s, avg. dist %s' %
                  (pass_no, str(time), cost, rank_cost, acc, rank_acc, avg_dist))
-        self.tb_logger.add_to_log(pass_no, {'train_pass_duration': time.total_seconds(),
-                                            'train_classif_cost': cost,
-                                            'train_accuracy': corr / n_inst,
-                                            'train_dist_avg': dist / n_inst,
-                                            'train_rank_acc': rank_corr / rank_n_inst,
-                                            'train_rank_cost': rank_cost})
+        self.tb_logger.add_to_log(pass_no, {
+            'train_pass_duration': time.total_seconds(),
+            'train_classif_cost': cost,
+            'train_accuracy': np.divide(corr, n_inst, out=np.zeros_like(n_inst), where=n_inst != 0),
+            'train_dist_avg': np.divide(dist, n_inst, out=np.zeros_like(n_inst), where=n_inst != 0),
+            'train_rank_acc': np.divide(rank_corr, rank_n_inst, out=np.zeros_like(rank_n_inst),
+                                        where=rank_n_inst != 0),
+            'train_rank_cost': rank_cost
+        })
 
     def _print_valid_stats(self, pass_no, results):
         """Print validation results for the given training pass number."""
