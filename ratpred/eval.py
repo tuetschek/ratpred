@@ -70,7 +70,9 @@ class Evaluator(object):
             outputs[target_col] = {'human_rating_raw': stats_for_col(self.raw_targets, col_num),
                                    'human_rating': stats_for_col(self.targets, col_num),
                                    'system_rating_raw': stats_for_col(self.raw_ratings, col_num),
-                                   'system_rating': stats_for_col(self.ratings, col_num)}
+                                   'system_rating': stats_for_col(self.ratings, col_num),
+                                   'rank_loss': stats_for_col(self.rank_loss, col_num),
+                                   'rank_ok': stats_for_col(self.rank_ok, col_num)}
         write_outputs(fname, self.inputs, outputs)
 
     def get_stats(self):
@@ -115,6 +117,9 @@ class Evaluator(object):
         trgs = np.array([outs[key]['human_rating'] for key in cols]).transpose()
         raw_rats = np.array([outs[key]['system_rating_raw'] for key in cols]).transpose()
         rats = np.array([outs[key]['system_rating'] for key in cols]).transpose()
+        rank_losses = np.array([outs[key]['rank_loss'] for key in cols]).transpose()
+        rank_oks = np.array([outs[key]['rank_ok'] for key in cols]).transpose()
         # append the instances
-        for inp, raw_trg, trg, raw_rat, rat in zip(inps, raw_trgs, trgs, raw_rats, rats):
-            self.append(inp, raw_trg, trg, raw_rat, rat)
+        for inp, raw_trg, trg, raw_rat, rat, rank_loss, rank_ok in zip(
+                inps, raw_trgs, trgs, raw_rats, rats, rank_losses, rank_oks):
+            self.append(inp, raw_trg, trg, raw_rat, rat, rank_loss, rank_ok)

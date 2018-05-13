@@ -71,12 +71,17 @@ def write_outputs(filename, inputs, outputs):
     das = [inp[0].to_cambridge_da_string() for inp in inputs]
     input_refs = [" ".join([tok for tok, _ in inp[1]]) for inp in inputs]
     input_hyps = [" ".join([tok for tok, _ in inp[2]]) for inp in inputs]
+    input_hyp2s = [" ".join([tok for tok, _ in inp[3]]) if inp[3] is not None else None
+                   for inp in inputs]
     df = {'mr': das,
           'orig_ref': input_refs,
-          'system_output': input_hyps}
+          'system_output': input_hyps,
+          'system_output2': input_hyp2s}
+
     for target_col in outputs.iterkeys():
         for subcol, values in outputs[target_col].iteritems():
             df[target_col + '_' + subcol] = values
+
     df = pd.DataFrame(df)
     df.to_csv(filename, sep=b"\t", index=False, encoding='UTF-8')
 
@@ -102,5 +107,6 @@ def read_outputs(filename):
     for target_col in target_cols:
         outputs[target_col] = {subcol: list(data[target_col + '_' + subcol])
                                for subcol in ['human_rating_raw', 'human_rating',
-                                              'system_rating_raw', 'system_rating']}
+                                              'system_rating_raw', 'system_rating',
+                                              'rank_loss', 'rank_ok']}
     return (inputs, outputs)
