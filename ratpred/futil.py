@@ -96,8 +96,13 @@ def read_outputs(filename):
                  for sent in data['orig_ref']]
     texts_hyp = [[(tok, None) for tok in tokenize(sent.lower()).split(' ')]
                  for sent in data['system_output']]
-    inputs = [(da, text_ref, text_hyp) for
-              da, text_ref, text_hyp in zip(das, texts_ref, texts_hyp)]
+    if 'system_output2' not in data:
+        data['system_output2'] = [None] * len(data)
+    texts_hyp2 = [[(tok, None) for tok in tokenize(sent.lower()).split(' ')]
+                  if isinstance(sent, basestring) else None
+                  for sent in data['system_output2']]
+    inputs = [(da, text_ref, text_hyp, text_hyp2) for
+              da, text_ref, text_hyp, text_hyp2 in zip(das, texts_ref, texts_hyp, texts_hyp2)]
 
     # find out which columns were used for ratings
     target_cols = [c[:-len('_system_rating')] for c in data.columns if c.endswith('_system_rating')]
