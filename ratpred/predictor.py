@@ -96,7 +96,7 @@ class RatingPredictor(TFModel):
         if not isinstance(self.target_cols, (list, tuple)):
             self.target_cols = [self.target_cols]
         self.delex_slots = cfg.get('delex_slots', set())
-        if self.delex_slots:
+        if self.delex_slots and isinstance(self.delex_slots, basestring):
             self.delex_slots = set(self.delex_slots.split(','))
         self.delex_slot_names = cfg.get('delex_slot_names', False)
         self.delex_das = cfg.get('delex_das', False)
