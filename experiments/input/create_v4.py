@@ -13,6 +13,7 @@ def concat_sets(src1, src2, dst, shorten=None):
         if shorten and len(add) > shorten:  # use less data
             add = add.sample(n=shorten)
         data = data.append(add)
+        data = data.sample(frac=1).reset_index(drop=True)  # shuffle data
         data.to_csv(os.path.join(dst, part), columns=data.columns, sep=b"\t", index=False, encoding='UTF-8')
 
 
@@ -26,17 +27,17 @@ def mkdir_p(path):
             raise
 
 
-## make directories
-#mkdir_p('../data/v4/e2e_qua')
-#mkdir_p('../data/v4/e2e_nat')
-#mkdir_p('../data/v4/e2e_both')
+# make directories
+mkdir_p('../data/v4/e2e_qua')
+mkdir_p('../data/v4/e2e_nat')
+mkdir_p('../data/v4/e2e_both')
 
-## basic data conversion
-#os.system('./convert_e2e.py --shuffle --column quality nlg-datasets/quality-fixed_utf.csv ../data/v4/e2e_qua/')
-#os.system('./convert_e2e.py --shuffle --column natur nlg-datasets/naturalness-fixed_utf.csv ../data/v4/e2e_nat/')
+# basic data conversion
+os.system('./convert_e2e.py --shuffle --column quality nlg-datasets/quality-fixed_utf.csv ../data/v4/e2e_qua/')
+os.system('./convert_e2e.py --shuffle --column natur nlg-datasets/naturalness-fixed_utf.csv ../data/v4/e2e_nat/')
 
-## concat version
-#concat_sets('../data/v4/e2e_qua/', '../data/v4/e2e_nat/', '../data/v4/e2e_both/')
+# concat version
+concat_sets('../data/v4/e2e_qua/', '../data/v4/e2e_nat/', '../data/v4/e2e_both/')
 
 # with ratings data
 for cvnum in ['cv00', 'cv01', 'cv02', 'cv03', 'cv04']:
@@ -48,3 +49,7 @@ for cvnum in ['cv00', 'cv01', 'cv02', 'cv03', 'cv04']:
 
     mkdir_p('../data/v4cv/joint_Ftonly/%s' % cvnum)
     concat_sets('../data/v3cv/noref_Ftonly/%s' % cvnum, '../data/v4/e2e_both/', '../data/v4cv/joint_Ftonly/%s' % cvnum)
+
+# just a test sample for ratings data
+mkdir_p('../data/v4/joint_test')
+concat_sets('../data/v3cv/noref/cv00', '../data/v4/e2e_both/', '../data/v4/joint_test', shorten=500)
