@@ -100,6 +100,10 @@ class Evaluator(object):
                                'pearson_pv': pearson_pv,
                                'spearman': spearman,
                                'spearman_pv': spearman_pv}
+            # XXX just patching up all nans so we can compute with them
+            # TODO get rid of the warnings as well
+            ret[target_col] = {key: val if not np.isnan(val) else 0.0
+                               for key, val in ret[target_col].iteritems()}
         return ret
 
     def append_from_tsv(self, fname):
