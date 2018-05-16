@@ -1,1 +1,2 @@
 git+https://github.com/UFAL-DSG/tgen
+requests
