@@ -15,6 +15,7 @@ import random
 import os
 import codecs
 import pprint
+from collections import Counter
 
 sys.excepthook = exc_info_hook
 
@@ -101,6 +102,24 @@ def convert(args):
     part_start = 0
     print >> sys.stderr, 'Data sizes in MRs: %s' % ':'.join([str(p) for p in part_sizes])
 
+    # remove ambiguous instances
+    if args.unambiguous:
+        occs = Counter([(inst['mr'], inst['system'], inst['system2']) for inst in data])
+        ambig = set()
+        for mr, sys1, sys2 in occs.iterkeys():
+            if occs.get((mr, sys2, sys1), 0) == occs[(mr, sys1, sys2)]:
+                ambig.add((mr, sys1, sys2))
+
+        uniq_data = []
+        used_insts = set()
+        for inst in data:
+            mr, sys1, sys2 = inst['mr'], inst['system'], inst['system2']
+            if (mr, sys1, sys2) in ambig or (mr, sys1, sys2) in used_insts:
+                continue
+            uniq_data.append(inst)
+            used_insts.add((mr, sys1, sys2))
+        data = uniq_data
+
     # mark down the configuration
     with codecs.open(os.path.join(args.out_path, 'config'), 'wb', encoding='UTF-8') as fh:
         fh.write(pprint.pformat(vars(args), indent=4, width=100))
@@ -125,6 +144,8 @@ def convert(args):
 if __name__ == '__main__':
     ap = ArgumentParser(description='Convert E2E data to our format.')
     ap.add_argument('--column', '-d', type=str, help='Column to use (others will be NaN)', required=True)
+    ap.add_argument('-u', '--unambiguous', action='store_true',
+                    help='Collapse identical MR-hyp-hyp2 tuples & only use the unambiguous ones (via majority vote)')
     ap.add_argument('-s', '--shuffle', action='store_true',
                     help='Shuffle data (within sets)')
     ap.add_argument('-r', '--ratio', type=str, default='8:1:1',

@@ -27,29 +27,41 @@ def mkdir_p(path):
             raise
 
 
-# make directories
-mkdir_p('../data/v4/e2e_qua')
-mkdir_p('../data/v4/e2e_nat')
-mkdir_p('../data/v4/e2e_both')
+## make directories
+#mkdir_p('../data/v4/e2e_qua')
+#mkdir_p('../data/v4/e2e_nat')
+#mkdir_p('../data/v4/e2e_both')
+mkdir_p('../data/v4/e2e_qua_unamb')
+mkdir_p('../data/v4/e2e_nat_unamb')
+mkdir_p('../data/v4/e2e_both_unamb')
 
-# basic data conversion
-os.system('./convert_e2e.py --shuffle --column quality nlg-datasets/quality-fixed_utf.csv ../data/v4/e2e_qua/')
-os.system('./convert_e2e.py --shuffle --column natur nlg-datasets/naturalness-fixed_utf.csv ../data/v4/e2e_nat/')
+## basic data conversion
+#os.system('./convert_e2e.py --shuffle --column quality nlg-datasets/quality-fixed_utf.csv ../data/v4/e2e_qua/')
+#os.system('./convert_e2e.py --shuffle --column natur nlg-datasets/naturalness-fixed_utf.csv ../data/v4/e2e_nat/')
+os.system('./convert_e2e.py --unambiguous --shuffle --column quality nlg-datasets/quality-fixed_utf.csv ../data/v4/e2e_qua_unamb/')
+os.system('./convert_e2e.py --unambiguous --shuffle --column natur nlg-datasets/naturalness-fixed_utf.csv ../data/v4/e2e_nat_unamb/')
 
 # concat version
-concat_sets('../data/v4/e2e_qua/', '../data/v4/e2e_nat/', '../data/v4/e2e_both/')
+#concat_sets('../data/v4/e2e_qua/', '../data/v4/e2e_nat/', '../data/v4/e2e_both/')
+concat_sets('../data/v4/e2e_qua_unamb/', '../data/v4/e2e_nat_unamb/', '../data/v4/e2e_both_unamb/')
 
 # with ratings data
 for cvnum in ['cv00', 'cv01', 'cv02', 'cv03', 'cv04']:
-    mkdir_p('../data/v4cv/joint/%s' % cvnum)
-    concat_sets('../data/v3cv/noref/%s' % cvnum, '../data/v4/e2e_both/', '../data/v4cv/joint/%s' % cvnum)
+#    mkdir_p('../data/v4cv/joint/%s' % cvnum)
+#    concat_sets('../data/v3cv/noref/%s' % cvnum, '../data/v4/e2e_both/', '../data/v4cv/joint/%s' % cvnum)
+    mkdir_p('../data/v4cv/joint_unamb/%s' % cvnum)
+    concat_sets('../data/v3cv/noref/%s' % cvnum, '../data/v4/e2e_both_unamb/', '../data/v4cv/joint_unamb/%s' % cvnum)
 
-    mkdir_p('../data/v4cv/joint_small/%s' % cvnum)
-    concat_sets('../data/v3cv/noref/%s' % cvnum, '../data/v4/e2e_both/', '../data/v4cv/joint_small/%s' % cvnum, shorten=5000)
+#    mkdir_p('../data/v4cv/joint_small/%s' % cvnum)
+#    concat_sets('../data/v3cv/noref/%s' % cvnum, '../data/v4/e2e_both/', '../data/v4cv/joint_small/%s' % cvnum, shorten=5000)
+    mkdir_p('../data/v4cv/joint_small_unamb/%s' % cvnum)
+    concat_sets('../data/v3cv/noref/%s' % cvnum, '../data/v4/e2e_both_unamb/', '../data/v4cv/joint_small_unamb/%s' % cvnum, shorten=5000)
 
-    mkdir_p('../data/v4cv/joint_Ftonly/%s' % cvnum)
-    concat_sets('../data/v3cv/noref_Ftonly/%s' % cvnum, '../data/v4/e2e_both/', '../data/v4cv/joint_Ftonly/%s' % cvnum)
+#    mkdir_p('../data/v4cv/joint_Ftonly/%s' % cvnum)
+#    concat_sets('../data/v3cv/noref_Ftonly/%s' % cvnum, '../data/v4/e2e_both/', '../data/v4cv/joint_Ftonly/%s' % cvnum)
+    mkdir_p('../data/v4cv/joint_Ftonly_unamb/%s' % cvnum)
+    concat_sets('../data/v3cv/noref_Ftonly/%s' % cvnum, '../data/v4/e2e_both_unamb/', '../data/v4cv/joint_Ftonly_unamb/%s' % cvnum)
 
-# just a test sample for ratings data
-mkdir_p('../data/v4/joint_test')
-concat_sets('../data/v3cv/noref/cv00', '../data/v4/e2e_both/', '../data/v4/joint_test', shorten=500)
+## just a test sample for ratings data
+#mkdir_p('../data/v4/joint_test')
+#concat_sets('../data/v3cv/noref/cv00', '../data/v4/e2e_both/', '../data/v4/joint_test', shorten=500)
