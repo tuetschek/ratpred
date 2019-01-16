@@ -12,7 +12,11 @@ from ratpred.futil import write_outputs, read_outputs
 def stats_for_col(data, col_num, mask=None):
     """Transpose array of arrays + return a specific column (with original data grouped by rows)."""
     ret = np.array(data).transpose()[col_num]
-    return ret[mask] if mask is not None else ret
+    if mask is not None:
+        if mask.any():
+            return ret[mask]
+        return [float('nan')]  # this prevents a lot of runtime warnings for computing on empty data
+    return ret
 
 
 class Evaluator(object):
@@ -75,7 +79,7 @@ class Evaluator(object):
                                    'rank_ok': stats_for_col(self.rank_ok, col_num)}
         write_outputs(fname, self.inputs, outputs)
 
-    def get_stats(self):
+    def get_stats(self, hide_nans=True):
         """Return important statistics (incl. correlations) in a dictionary."""
         ret = {}
         for col_num, target_col in enumerate(self.target_cols):
@@ -83,27 +87,33 @@ class Evaluator(object):
             rank_mask = np.array([inp[3] is not None for inp in self.inputs])
             rank_mask &= mask
             mask &= ~rank_mask
-            pearson, pearson_pv = scipy.stats.pearsonr(stats_for_col(self.targets, col_num, mask),
-                                                       stats_for_col(self.ratings, col_num, mask))
-            spearman, spearman_pv = scipy.stats.spearmanr(stats_for_col(self.targets, col_num, mask),
-                                                          stats_for_col(self.ratings, col_num, mask))
+            pearson, pearson_pv = float('nan'), float('nan')
+            spearman, spearman_pv = float('nan'), float('nan')
+            if mask.any:
+                pearson, pearson_pv = scipy.stats.pearsonr(stats_for_col(self.targets, col_num, mask),
+                                                           stats_for_col(self.ratings, col_num, mask))
+                spearman, spearman_pv = scipy.stats.spearmanr(stats_for_col(self.targets, col_num, mask),
+                                                              stats_for_col(self.ratings, col_num, mask))
             ret[target_col] = {'dist_total': np.sum(stats_for_col(self.dists, col_num, mask)),
                                'dist_avg': np.mean(stats_for_col(self.dists, col_num, mask)),
                                'dist_stddev': np.std(stats_for_col(self.dists, col_num, mask)),
                                'mae': np.mean(stats_for_col(self.aes, col_num, mask)),
                                'rmse': np.sqrt(np.mean(stats_for_col(self.sqes, col_num, mask))),
-                               'accuracy': self.correct[col_num] / self.total[col_num],
-                               'rank_acc': self.rank_ok[col_num] / self.rank_total[col_num],
+                               'accuracy': (self.correct[col_num] / self.total[col_num]
+                                            if self.total[col_num] else float('nan')),
+                               'rank_acc': (self.rank_ok[col_num] / self.rank_total[col_num]
+                                            if self.rank_total[col_num] else float('nan')),
                                'rank_loss_total': self.rank_loss[col_num],
-                               'rank_loss_avg': self.rank_loss[col_num] / self.rank_total[col_num],
+                               'rank_loss_avg': (self.rank_loss[col_num] / self.rank_total[col_num]
+                                                 if self.rank_total[col_num] else float('nan')),
                                'pearson': pearson,
                                'pearson_pv': pearson_pv,
                                'spearman': spearman,
                                'spearman_pv': spearman_pv}
-            # XXX just patching up all nans so we can compute with them
-            # TODO get rid of the warnings as well
-            ret[target_col] = {key: val if not np.isnan(val) else 0.0
-                               for key, val in ret[target_col].iteritems()}
+            # just patching up all nans so we can compute with them (in validation/combined scores)
+            if hide_nans:
+                ret[target_col] = {key: val if not np.isnan(val) else 0.0
+                                   for key, val in ret[target_col].iteritems()}
         return ret
 
     def append_from_tsv(self, fname):
