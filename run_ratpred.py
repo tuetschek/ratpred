@@ -54,6 +54,7 @@ def test(args):
                                                                results[tc]['dist_total'],
                                                                results[tc]['dist_avg'],
                                                                results[tc]['dist_stddev']))
+        log_info("%s MAE: %.3f, RMSE: %.3f" % (tc.upper(), results[tc]['mae'], results[tc]['rmse']))
         log_info("%s Accuracy: %.3f" % (tc.upper(), results[tc]['accuracy']))
         log_info("%s Pearson correlation: %.3f (p-value %.3f)" %
                  (tc.upper(), results[tc]['pearson'], results[tc]['pearson_pv']))

@@ -25,7 +25,7 @@ def process_data(args):
     evaler = Evaluator()
     for fname in fnames:
         evaler.append_from_tsv(fname)
-    results = evaler.get_stats()
+    results = evaler.get_stats(hide_nans=False)
     for tc in sorted(results.keys()):
         log_info("%s Distance: %.3f (avg: %.3f, std: %.3f)" % (tc.upper(),
                                                                results[tc]['dist_total'],
@@ -37,7 +37,9 @@ def process_data(args):
                  (tc.upper(), results[tc]['pearson'], results[tc]['pearson_pv']))
         log_info("%s Spearman correlation: %.3f (p-value %.3f)" %
                  (tc.upper(), results[tc]['spearman'], results[tc]['spearman_pv']))
-
+        log_info("%s Pairwise rank accuracy: %.3f" % (tc.upper(), results[tc]['rank_acc']))
+        log_info("%s Pairwise rank loss: %.3f (avg: %.3f)" %
+                 (tc.upper(), results[tc]['rank_loss_total'], results[tc]['rank_loss_avg']))
 
 if __name__ == '__main__':
     ap = ArgumentParser(description='Compute overall statistics from CV/rands runs.')

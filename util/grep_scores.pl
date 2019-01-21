@@ -34,25 +34,32 @@ exit() if ( !defined $file_to_process );
 
 # Process the file
 open( my $fh, '<:utf8', $file_to_process );
-my ($mae_str, $rmse_str, $pear_str, $spea_str) = ('') x 4;
+my ($mae_str, $rmse_str, $pear_str, $spea_str, $racc_str, $rloss_str) = ('') x 6;
 
 while ( my $line = <$fh> ) {
     chomp $line;
 
-    if ( $line =~ /(MAE:.*RMSE:)/i ) {
+    if ( $line =~ /MAE: ([0-9.]+), RMSE: ([0-9.]+)/i ) {
         my ($mae, $rmse) = ($line =~ /MAE: ([0-9.]+), RMSE: ([0-9.]+)/);
         $mae_str .= ($mae_str ? ':' : '') . rg( 0, $dist_range , $mae, 1 ) . "$mae\e[0m";
         $rmse_str .= ($rmse_str ? ':' : '') . rg( 0, $dist_range , $rmse, 1 ) . "$rmse\e[0m";
     }
-    if ( $line =~ /Pearson correlation:/i ) {
+    if ( $line =~ /Pearson correlation: .*[0-9.]+/i ) {
         my ($sign, $corr, $pv) = ($line =~ /([ -])([0-9.]+) \(p-value ([0-9.]+)\)/);
         $pear_str .= ($pear_str ? ':' : '') . rg( 0, 1, $corr ) . format_corr("$sign$corr") . "\e[0m";
     }
-    if ( $line =~ /Spearman correlation:/i ) {
+    if ( $line =~ /Spearman correlation: .*[0-9.]+/i ) {
         my ($sign, $corr, $pv) = ($line =~ /([ -])([0-9.]+) \(p-value ([0-9.]+)\)/);
         $spea_str .= ($spea_str ? ':' : '') . rg( 0, 1, $corr ) . format_corr("$sign$corr") . "\e[0m";
     }
-
+    if ( $line =~ /Pairwise rank accuracy: .*[0-9.]+/i ){
+        my ($racc) = ($line =~ /accuracy: ([0-9.]+)/);
+        $racc_str .= ($racc_str ? ':' : '') . rg( 0, 1, $racc ) . "$racc\e[0m";
+    }
+    if ( $line =~ /Pairwise rank loss: .*[0-9.]+/i ){
+        my ($rloss) = ($line =~ /\(avg: ([0-9.]+)/);
+        $rloss_str .= ($rloss_str ? ':' : '') . rg( 0, 0.5, $rloss, 1 ) . "$rloss\e[0m";
+    }
 }
 
 close($fh);
@@ -62,7 +69,8 @@ print $mae_str ? "M $mae_str\e[0m  " : "";
 print $rmse_str ? "R $rmse_str\e[0m  " : "";
 print $pear_str ? "P $pear_str\e[0m  " : "";
 print $spea_str ? "S $spea_str\e[0m  " : "";
-
+print $racc_str ? "Ar$racc_str\e[0m  " : "";
+print $rloss_str ? "Lr$rloss_str\e[0m  " : "";
 #
 # Subs
 #
