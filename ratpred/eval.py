@@ -34,6 +34,8 @@ class Evaluator(object):
         self.raw_ratings = []
         self.ratings = []
         self.dists = []
+        self.rank_losses = []
+        self.rank_oks = []
         self.aes = []  # absolute error
         self.sqes = []  # square error
         self.total = np.zeros((len(self.target_cols),))
@@ -44,11 +46,16 @@ class Evaluator(object):
 
     def append(self, inp, raw_trg, trg, raw_rat, rat, raw_rank_diff, rank_ok):
         """Append one rating (along with input & target), update statistics."""
+        # precompute
+        rank_loss = np.maximum(-raw_rank_diff, np.zeros_like(raw_rank_diff))
+        # store stuff for later output
         self.inputs.append(inp)
         self.raw_ratings.append(raw_rat)
         self.ratings.append(rat)
         self.raw_targets.append(raw_trg)
         self.targets.append(trg)
+        self.rank_losses.append(rank_loss)
+        self.rank_oks.append(rank_ok)
         # mask stuff that should not be evaluated
         aspect_mask = 1. - np.isnan(raw_trg)
         ranking_mask = int(inp[3] is not None) * np.ones(rank_ok.shape)
@@ -65,7 +72,7 @@ class Evaluator(object):
         # ranking stats
         self.rank_total += ranking_mask
         self.rank_ok += ranking_mask * rank_ok
-        self.rank_loss += ranking_mask * np.maximum(- raw_rank_diff, np.zeros_like(raw_rank_diff))
+        self.rank_loss += ranking_mask * rank_loss
 
     def write_tsv(self, fname):
         """Write a TSV file containing all the prediction data so far."""
@@ -75,8 +82,8 @@ class Evaluator(object):
                                    'human_rating': stats_for_col(self.targets, col_num),
                                    'system_rating_raw': stats_for_col(self.raw_ratings, col_num),
                                    'system_rating': stats_for_col(self.ratings, col_num),
-                                   'rank_loss': stats_for_col(self.rank_loss, col_num),
-                                   'rank_ok': stats_for_col(self.rank_ok, col_num)}
+                                   'rank_loss': stats_for_col(self.rank_losses, col_num),
+                                   'rank_ok': stats_for_col(self.rank_oks, col_num)}
         write_outputs(fname, self.inputs, outputs)
 
     def get_stats(self, hide_nans=True):
@@ -136,4 +143,5 @@ class Evaluator(object):
         # append the instances
         for inp, raw_trg, trg, raw_rat, rat, rank_loss, rank_ok in zip(
                 inps, raw_trgs, trgs, raw_rats, rats, rank_losses, rank_oks):
-            self.append(inp, raw_trg, trg, raw_rat, rat, rank_loss, rank_ok)
+            # need to turn the loss back into div (will be flipped again upon addition)
+            self.append(inp, raw_trg, trg, raw_rat, rat, -rank_loss, rank_ok)
