@@ -5,11 +5,11 @@
 # Environment settings
 SHELL = /bin/bash
 RATPRED = ../run_ratpred.py
-MEM = 4g
-CPUS = 6
+MEM = 8g
+CPUS = 4
 
 # XXX Replace this with your batch queue engine system command !
-QP = --engine=slurm --queue=amd-longq
+QP = --engine=sge --queue=cpu-troja.q
 ifdef LOCAL
   QP = --engine=console
 endif
