@@ -88,6 +88,11 @@ def write_outputs(filename, inputs, outputs):
 
 def read_outputs(filename):
     data = pd.read_csv(filename, sep=b"\t", encoding='UTF-8')
+    if isinstance(data.iloc[len(data) - 1]['mr'], float):
+        # XXX workaround to a strange bug that sometimes happens -- not sure how to get rid of it,
+        # probably an error in Pandas
+        print('!!!Strangely need to remove an empty intstance from the end of %s' % filename)
+        data = data[:-1]
     das = [DA.parse_cambridge_da(da) for da in data['mr']]
 
     # force string data type for empty human references
