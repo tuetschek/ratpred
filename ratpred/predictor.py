@@ -906,6 +906,21 @@ class RatingPredictor(TFModel):
         if inputs_daclassif_trg is not None:
             fd[self.daclassif_targets] = inputs_daclassif_trg
 
+    def _print_batch_debug(self, inst_nos, results, classif_cost, corr, dist):
+        log_debug('INST-NOS: ' + str(inst_nos))
+        log_debug("\n" +
+                  "\n".join(' '.join([tok for tok, _ in self.train_hyps[i]]) + "\t" +
+                            ' '.join([tok for tok, _ in self.train_hyp2s[i]]
+                                     if self.train_hyp2s[i] is not None else ['<NONE>']) + "\t" +
+                            ' '.join([tok for tok, _ in self.train_refs[i]]) + "\t" +
+                            unicode(self.train_das[i]) + "\t" +
+                            unicode(np.transpose(self.y[i])) + "\t" +
+                            unicode(np.transpose(results[cnt]))
+                            for cnt, i in enumerate(inst_nos)))
+        log_debug('COST: %f, corr %s/%d, dist %s' %
+                  (classif_cost, ':'.join(['%d' % c for c in corr]),
+                   len(inst_nos), ':'.join(['%.3f' % d for d in dist])))
+
     def _training_pass(self, pass_no):
         """Perform one training pass through the whole training data, print statistics."""
 
@@ -925,14 +940,6 @@ class RatingPredictor(TFModel):
         for inst_nos in self._batches():
 
             pass_insts += len(inst_nos)
-            log_debug('INST-NOS: ' + str(inst_nos))
-            log_debug("\n".join(' '.join([tok for tok, _ in self.train_hyps[i]]) + "\n" +
-                                ' '.join([tok for tok, _ in self.train_hyp2s[i]]
-                                         if self.train_hyp2s[i] is not None else ['<NONE>']) + "\n" +
-                                ' '.join([tok for tok, _ in self.train_refs[i]]) + "\n" +
-                                unicode(self.train_das[i]) + "\n" +
-                                unicode(self.y[i])
-                                for i in inst_nos))
 
             targets = self.y[inst_nos]
             targets = np.reshape(targets, (targets.shape[0], np.prod(targets.shape[1:])))
@@ -942,7 +949,7 @@ class RatingPredictor(TFModel):
             ranking_mask = np.dot(self.X_has_hyp2[inst_nos].reshape(len(inst_nos), 1),
                                   np.ones((1, self.y.shape[1])))
             ranking_mask *= aspect_mask
-            aspect_mask *= 1. - ranking_mask
+            aspect_mask *= 1. - ranking_mask  # do not predict ratings for ranked stuff
 
             fd = {self.target: targets,
                   self.aspect_mask: aspect_mask,
@@ -972,12 +979,6 @@ class RatingPredictor(TFModel):
             dist = np.sum(aspect_mask * np.abs(pred - true), axis=0)
             corr = np.sum(aspect_mask.astype(np.int) *
                           (self._round_rating(pred) == self._round_rating(true)), axis=0)
-
-            log_debug('R: ' + str(results))
-            log_debug('COST: %f, corr %s/%d, dist %s' %
-                      (classif_cost, ':'.join(['%d' % c for c in corr]),
-                       len(inst_nos), ':'.join(['%.3f' % d for d in dist])))
-
             pass_valid += valid
             pass_dist += dist
             pass_corr += corr
@@ -989,6 +990,8 @@ class RatingPredictor(TFModel):
             pass_corr_ranks += corr_ranks
             pass_valid_ranks += np.sum(ranking_mask, axis=0)
             pass_ranking_cost += ranking_cost
+
+            self._print_batch_debug(inst_nos, results, classif_cost, corr, dist)
 
             pass_cost += total_cost
 
