@@ -6,7 +6,7 @@
 'randomize': True
 'batch_size': 5
 'dropout_keep_prob': 1.0
-'alpha': 1e-3
+'alpha': 1.e-3
 'emb_size': 10
 'max_sent_len': 5
 'max_da_len': 1
@@ -19,7 +19,7 @@
 'tanh_layers': 1
 'predict_ints': False
 'predict_halves': False
-'predict_coarse': None  #'train'
+'predict_coarse': Null  #'train'
 'cell_type': 'gru'
 'bidi': False
 'ref_enc': False
