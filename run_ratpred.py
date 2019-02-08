@@ -5,9 +5,10 @@
 from __future__ import unicode_literals
 
 import sys
+import yaml
+import codecs
 from argparse import ArgumentParser
 
-from flect.config import Config
 from tgen.logf import log_info, set_debug_stream
 from tgen.debug import exc_info_hook
 from tgen.futil import file_stream
@@ -25,7 +26,8 @@ def train(args):
         rnd.seed(args.random_seed)
 
     log_info("Loading configuration from %s..." % args.config_file)
-    cfg = Config(args.config_file)
+    with codecs.open(args.config_file, 'r', 'UTF-8') as fh:
+        cfg = yaml.load(fh)
 
     log_info("Initializing...")
     rp = RatingPredictor(cfg)
