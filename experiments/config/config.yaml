@@ -1,76 +1,71 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+'language': 'en'
+'selector': ''
+'passes': 100
+'min_passes': 0
+'pretrain_passes': 20
+'randomize': True
+'batch_size': 50
+'dropout_keep_prob': 0.5
+'alpha': 1e-4
+'emb_size': 300
+'max_sent_len': 50
+'validation_size': 100
+'validation_freq': 1
 
-from __future__ import unicode_literals
+'validation_weights':
+    'pearson': -100.0
+    'spearman': -100.0
+    'dist_avg': 0.1
+    'cost_avg': 0.1
+    'rank_loss_avg': 100.0
+    'rank_acc': 100.0
 
-config = {
-          'language': 'en',
-          'selector': '',
-          'passes': 100,
-          'min_passes': 0,
-          'pretrain_passes': 20,
-          'randomize': True,
-          'batch_size': 50,
-          'dropout_keep_prob': 0.5,
-          'alpha': 1e-4,
-          'emb_size': 300,
-          'max_sent_len': 50,
-          'validation_size': 100,
-          'validation_freq': 1,
-          'validation_weights': {
-              'pearson': -100.0,
-              'spearman': -100.0,
-              'dist_avg': 0.1,
-              'cost_avg': 0.1,
-              'rank_loss_avg': 100.0,
-              'rank_acc': 100.0,
-          },
-          'max_cores': 4,
-          'disk_store_freq': 1,
-          'disk_store_min_pass': 20,
-          #'target_col': ['informativeness', 'naturalness', 'quality'],
-          'target_col': ['naturalness', 'quality'],
-          #'target_col': 'informativeness',
-          #'target_col': 'naturalness',
-          #'target_col': 'quality',
-          #'delex_slots': 'name,postcode,address,near,area,phone,addr,count',
-          #'delex_slots': 'count,addr,area,food,price,phone,near,pricerange,postcode,address,eattype,type,price_range,good_for_meal,name',
-          'delex_slots': {  # to use with E2E data
-                          'addr': set(),
-                          'address': set(),
-                          'area': set(['citycentre', 'city centre', 'riverside']),
-                          'count': set(),
-                          #'customerRating': set(),
-                          #'eattype': set(),
-                          #'food': set(),
-                          #'good_for_meal': set(),
-                          'name': set(),
-                          'near': set(),
-                          'phone': set(),
-                          'postcode': set(),
-                          'price': set(),
-                          #'priceRange': set(),
-                          #'price_range': set(),
-                          #'pricerange': set(),
-                          #'type': set(),
-                         },
-          'delex_slot_names': False,
-          'delex_das': True,
-          'reuse_embeddings': False,
-          'char_embs': False,
-          #'word2vec_embs': 'trainable',
-          #'word2vec_model': 'data/word2vec/GoogleNews-vectors-negative-300_100k.bin',
-          'tanh_layers': 2,
-          'predict_ints': False,
-          'predict_halves': True,
-          'predict_coarse': None, #'train',
-          'cell_type': 'gru/2',
-          'bidi': True,
-          'ref_enc': False,
-          'da_enc': True,
-          'use_seq2seq': False,
-          'seq2seq_pretrain_passes': 0,
-          'seq2seq_min_passes': 0,
-          'daclassif_pretrain_passes': 0,
-          'daclassif_min_passes': 0,
-        }
+'max_cores': 4
+'disk_store_freq': 1
+'disk_store_min_pass': 20
+#'target_col': ['informativeness', 'naturalness', 'quality']
+'target_col': ['naturalness', 'quality']
+#'target_col': 'informativeness'
+#'target_col': 'naturalness'
+#'target_col': 'quality'
+
+#'delex_slots': 'name,postcode,address,near,area,phone,addr,count'
+#'delex_slots': 'count,addr,area,food,price,phone,near,pricerange,postcode,address,eattype,type,price_range,good_for_meal,name'
+'delex_slots':  # to use with E2E data
+    'addr': !!set {}
+    'address': !!set {}
+    'area': !!set {'citycentre', 'city centre', 'riverside'}
+    'count': !!set {}
+    #'customerRating': !!set {}
+    #'eattype': !!set {}
+    #'food': !!set {}
+    #'good_for_meal': !!set {}
+    'name': !!set {}
+    'near': !!set {}
+    'phone': !!set {}
+    'postcode': !!set {}
+    'price': !!set {}
+    #'priceRange': !!set {}
+    #'price_range': !!set {}
+    #'pricerange': !!set {}
+    #'type': !!set {}
+
+'delex_slot_names': False
+'delex_das': True
+'reuse_embeddings': False
+'char_embs': False
+#'word2vec_embs': 'trainable'
+#'word2vec_model': 'data/word2vec/GoogleNews-vectors-negative-300_100k.bin'
+'tanh_layers': 2
+'predict_ints': False
+'predict_halves': True
+'predict_coarse': None, #'train'
+'cell_type': 'gru/2'
+'bidi': True
+'ref_enc': False
+'da_enc': True
+'use_seq2seq': False
+'seq2seq_pretrain_passes': 0
+'seq2seq_min_passes': 0
+'daclassif_pretrain_passes': 0
+'daclassif_min_passes': 0
