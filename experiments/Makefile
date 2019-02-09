@@ -30,6 +30,7 @@ endif
 OVERALL_SCORES = ../util/overall_scores.py
 GREP_SCORES = ../util/grep_scores.pl --dist-range=2
 DESC_EXP = ../util/describe_experiment.pl
+CFG_OVERRIDE_TOOL = ../util/cfg_override.py
 NOWRAP = ../util/nowrap.pl
 NUM_EXP = 20  # number of experiments to list in `make desc'
 
@@ -50,7 +51,7 @@ endif
 
 # Input data file defaults
 
-CONFIG = config/config.py
+CONFIG = config/config.yaml
 
 TRAIN_DATA = data/$(TRAINING_SET)/$(CV_NUM)/train.tsv
 TEST_DATA = data/$(TRAINING_SET)/$(CV_NUM)/devel.tsv
@@ -180,7 +181,7 @@ cv_run:
 		for SEED in "$${SEEDS[@]}"; do \
 			TRAIN_RUN=train ; \
 			TEST_RUN=test ; \
-			make $$TRAIN_RUN TRY_DIR=$(TRY_DIR)/$$CV_NUM$$SEED SEED=$$SEED TRY_NUM=$(TRY_NUM) CV_NUM=$$CV_NUM 2>&1 | tee -a $(TRY_DIR)/cv.log.txt ; \
+			make $$TRAIN_RUN TRY_DIR=$(TRY_DIR)/$$CV_NUM$$SEED SEED=$$SEED TRY_NUM=$(TRY_NUM) CV_NUM=$$CV_NUM CFG_OVERRIDE="$(CFG_OVERRIDE)" 2>&1 | tee -a $(TRY_DIR)/cv.log.txt ; \
 			JOB_NUM=`cat $(TRY_DIR)/cv.log.txt | grep '^\(Your job\|Submitted batch\|Job_ID\)' | tail -n 1 | sed 's/^\(Your job\|Submitted batch job\|Job_ID:\) \([0-9]\+\).*/\2/;' ` ; \
 			if [ -n "$$JOB_NUM" ]; then \
 			    QHOLD="--hold $$JOB_NUM"; \
@@ -207,13 +208,16 @@ score:
 
 train: RUN_NAME := train
 train:
-	make prepare_train_data TRY_DIR=$(TRY_DIR) EVAL_TEST=$(EVAL_TEST) SEED=$(SEED) CV_NUM=$(CV_NUM)
+	make prepare_train_data TRY_DIR=$(TRY_DIR) EVAL_TEST=$(EVAL_TEST) SEED=$(SEED) CV_NUM=$(CV_NUM) CFG_OVERRIDE="$(CFG_OVERRIDE)"
 	make train_process TRY_DIR=$(TRY_DIR) TRY_NUM=$(TRY_NUM) EVAL_TEST=$(EVAL_TEST) SEED=$(SEED) CV_NUM=$(CV_NUM) \
 	    TRAIN_PORTION=$(TRAIN_PORTION) DEBUG_LOG_TRAIN=$(DEBUG_LOG_TRAIN)
 
 prepare_train_data: prepare_dir
 prepare_train_data:
-	cp $(CONFIG) $(TRY_DIR)/config.py
+	cp $(CONFIG) $(TRY_DIR)/config.yaml
+	if [[ -n "$(CFG_OVERRIDE)" ]]; then \
+		$(CFG_OVERRIDE_TOOL) $(TRY_DIR)/config.yaml "$(CFG_OVERRIDE)" ; \
+	fi
 	cp $(TRAIN_DATA) $(TRY_DIR)/train.tsv
 	if [[ -n "$(EVAL_TEST)" ]]; then \
 		cp $(VALID_DATA) $(TRY_DIR)/devel.tsv ; \
@@ -227,7 +231,7 @@ train_process:
 	$(QSUBMIT) '$(ACTIVATE); \
 		$(RATPRED) $(DEBUG_LOG_TRAIN) train \
 		-p $(TRAIN_PORTION) -r "$(SEED)" '"$$VALID_DATA_SPEC"' \
-		$(TRY_DIR)/config.py $(TRY_DIR)/train.tsv \
+		$(TRY_DIR)/config.yaml $(TRY_DIR)/train.tsv \
 		$(TRY_DIR)/model.pickle.gz' 2>&1 | tee $(TRY_DIR)/train.log.txt
 
 test:
