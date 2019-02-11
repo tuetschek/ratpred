@@ -18,7 +18,7 @@
     'dist_avg': 0.1
     'cost_avg': 0.1
     'rank_loss_avg': 100.0
-    'rank_acc': 100.0
+    'rank_acc': -100.0
 
 'max_cores': 4
 'disk_store_freq': 1
