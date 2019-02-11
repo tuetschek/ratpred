@@ -29,7 +29,7 @@ ifdef DEBUG_TEST
 endif
 OVERALL_SCORES = ../util/overall_scores.py
 GREP_SCORES = ../util/grep_scores.pl --dist-range=2
-DESC_EXP = ../util/describe_experiment.pl
+DESC_EXP = ../util/describe_experiment.py
 CFG_OVERRIDE_TOOL = ../util/cfg_override.py
 NOWRAP = ../util/nowrap.pl
 NUM_EXP = 20  # number of experiments to list in `make desc'
@@ -157,7 +157,11 @@ prepare_dir:
 	# create the experiment directory, print description and git version
 	echo "PREPARE DIR" $(TRY_DIR) $(CV_NUM) $(SEED)
 	mkdir -p $(TRY_DIR)
-	CONFIG=$(CONFIG) ; \
+	cp $(CONFIG) $(TRY_DIR)/config.yaml
+	if [[ -n "$(CFG_OVERRIDE)" ]]; then \
+		$(CFG_OVERRIDE_TOOL) $(TRY_DIR)/config.yaml "$(CFG_OVERRIDE)" ; \
+	fi
+	CONFIG=$(TRY_DIR)/config.yaml ; \
 	[[ -n "$(DEBUG)" || -n "$(DEBUG_TEST)" ]] && DEBUG_SETTING=-d ; \
 	[[ -n "$(RANDS)" ]] && RANDS_SETTING=-r ; \
 	[[ -n "$(EVAL_TEST)" ]] && EVAL_SETTING=-e ; \
@@ -214,10 +218,6 @@ train:
 
 prepare_train_data: prepare_dir
 prepare_train_data:
-	cp $(CONFIG) $(TRY_DIR)/config.yaml
-	if [[ -n "$(CFG_OVERRIDE)" ]]; then \
-		$(CFG_OVERRIDE_TOOL) $(TRY_DIR)/config.yaml "$(CFG_OVERRIDE)" ; \
-	fi
 	cp $(TRAIN_DATA) $(TRY_DIR)/train.tsv
 	if [[ -n "$(EVAL_TEST)" ]]; then \
 		cp $(VALID_DATA) $(TRY_DIR)/devel.tsv ; \
