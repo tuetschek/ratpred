@@ -7,6 +7,7 @@ from __future__ import unicode_literals
 from argparse import ArgumentParser
 import os
 import yaml
+import json
 import sys
 from copy import copy
 
@@ -19,23 +20,24 @@ def main(one_dim, values, args):
         var_name = var.keys()[0]
         var_vals = var.values()[0]
         new_vals = []
-        if one_dim:
-            for cur_val in cfg_overrides[1:]:
-                new_val = copy(cur_val)
-                new_val[var_name] = var_vals[0]
-                new_vals.append(new_val)
         for var_val in var_vals:
             cur_vals = [cfg_overrides[0]] if one_dim else cfg_overrides
             for cur_val in cur_vals:
                 new_val = copy(cur_val)
                 new_val[var_name] = var_val
                 new_vals.append(new_val)
+        if one_dim:
+            for cur_val in cfg_overrides[1:]:
+                new_val = copy(cur_val)
+                new_val[var_name] = var_vals[0]
+                new_vals.append(new_val)
         cfg_overrides = new_vals
 
     # run the makefiles
     args = ('"' if args else '') + '" "'.join(args) + ('"' if args else '')
     for cfg_override in cfg_overrides:
-        command = 'make cv_run %s CFG_OVERRIDE="%s"' % (args, yaml.dump(cfg_override)[:-1])
+        # JSON is a safe subset of YAML -> use that since the YAML dumper wreaks havoc
+        command = 'make cv_run %s CFG_OVERRIDE=\'%s\'' % (args, json.dumps(cfg_override))
         print('Running: ' + command, file=sys.stderr)
         os.system(command)
 
