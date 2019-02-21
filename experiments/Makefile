@@ -142,6 +142,12 @@ desc:
 		cat $$file/$(SCOREFILE) | $(NOWRAP) $$COLS; \
 	done
 
+desc_wrap:
+	@ls -d $(RUNS_DIR)/* | sort | tail -n $(NUM_EXP) | while read file; do \
+		cat $$file/$(SCOREFILE) ; \
+	done
+
+
 printvars:
 	$(foreach V, $(sort $(.VARIABLES)), $(if $(filter-out environment% default automatic, $(origin $V)), $(info $V=$($V) ($(value $V)))))
 
@@ -158,8 +164,8 @@ prepare_dir:
 	echo "PREPARE DIR" $(TRY_DIR) $(CV_NUM) $(SEED)
 	mkdir -p $(TRY_DIR)
 	cp $(CONFIG) $(TRY_DIR)/config.yaml
-	if [[ -n "$(CFG_OVERRIDE)" ]]; then \
-		$(CFG_OVERRIDE_TOOL) $(TRY_DIR)/config.yaml "$(CFG_OVERRIDE)" ; \
+	if [[ -n '$(CFG_OVERRIDE)' ]]; then \
+		$(CFG_OVERRIDE_TOOL) $(TRY_DIR)/config.yaml '$(CFG_OVERRIDE)' ; \
 	fi
 	CONFIG=$(TRY_DIR)/config.yaml ; \
 	[[ -n "$(DEBUG)" || -n "$(DEBUG_TEST)" ]] && DEBUG_SETTING=-d ; \
@@ -185,7 +191,7 @@ cv_run:
 		for SEED in "$${SEEDS[@]}"; do \
 			TRAIN_RUN=train ; \
 			TEST_RUN=test ; \
-			make $$TRAIN_RUN TRY_DIR=$(TRY_DIR)/$$CV_NUM$$SEED SEED=$$SEED TRY_NUM=$(TRY_NUM) CV_NUM=$$CV_NUM CFG_OVERRIDE="$(CFG_OVERRIDE)" 2>&1 | tee -a $(TRY_DIR)/cv.log.txt ; \
+			make $$TRAIN_RUN TRY_DIR=$(TRY_DIR)/$$CV_NUM$$SEED SEED=$$SEED TRY_NUM=$(TRY_NUM) CV_NUM=$$CV_NUM CFG_OVERRIDE='$(CFG_OVERRIDE)' 2>&1 | tee -a $(TRY_DIR)/cv.log.txt ; \
 			JOB_NUM=`cat $(TRY_DIR)/cv.log.txt | grep '^\(Your job\|Submitted batch\|Job_ID\)' | tail -n 1 | sed 's/^\(Your job\|Submitted batch job\|Job_ID:\) \([0-9]\+\).*/\2/;' ` ; \
 			if [ -n "$$JOB_NUM" ]; then \
 			    QHOLD="--hold $$JOB_NUM"; \
@@ -212,7 +218,7 @@ score:
 
 train: RUN_NAME := train
 train:
-	make prepare_train_data TRY_DIR=$(TRY_DIR) EVAL_TEST=$(EVAL_TEST) SEED=$(SEED) CV_NUM=$(CV_NUM) CFG_OVERRIDE="$(CFG_OVERRIDE)"
+	make prepare_train_data TRY_DIR=$(TRY_DIR) EVAL_TEST=$(EVAL_TEST) SEED=$(SEED) CV_NUM=$(CV_NUM) CFG_OVERRIDE='$(CFG_OVERRIDE)'
 	make train_process TRY_DIR=$(TRY_DIR) TRY_NUM=$(TRY_NUM) EVAL_TEST=$(EVAL_TEST) SEED=$(SEED) CV_NUM=$(CV_NUM) \
 	    TRAIN_PORTION=$(TRAIN_PORTION) DEBUG_LOG_TRAIN=$(DEBUG_LOG_TRAIN)
 
