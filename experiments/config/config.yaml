@@ -2,7 +2,7 @@
 'selector': ''
 'passes': 100
 'min_passes': 0
-'pretrain_passes': 20
+'pretrain_passes': 0  # TODO set to non-zero for fabricated errors
 'randomize': True
 'batch_size': 50
 'dropout_keep_prob': 0.5
