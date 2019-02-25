@@ -5,7 +5,7 @@
 # Environment settings
 SHELL = /bin/bash
 RATPRED = ../run_ratpred.py
-MEM = 8g
+MEM = 12g
 CPUS = 4
 
 # XXX Replace this with your batch queue engine system command !
