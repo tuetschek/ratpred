@@ -53,6 +53,7 @@ def main(exp_dirs, output_tsv):
         for key, pat in SCORE_PATTERNS.items():
             m = re.search(pat, score_info)
             if m:
+                # remove bash color information from the scores
                 scores = re.sub('.\[[0-9;]+m', '', m.group(1)).split(':')
                 if key in SCORE_TYPES:  # split quality/naturalness scores, prepend with Q_ or N_
                     for score, sc_type in zip(scores, cfg['target_col']):
