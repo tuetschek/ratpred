@@ -18,12 +18,12 @@ SCORE_PATTERNS = {
     'dataset': r'  (v[34](?:.[0-9])?(?:cv)?/[a-z_]+) ',
     'exp_number': r'^([0-9]+) ',
     'datetime': r'([0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}-[0-9]{2}-[0-9]{2})',
-    'MAE': r': M .\[[0-9;]+m([0-9.:]+)',
-    'RMSE': r'  R .\[[0-9;]+m([0-9.:]+)',
-    'pearson': r'  P .\[[0-9;]+m([0-9.:]+)',
-    'spearman': r'  S .\[[0-9;]+m([0-9.:]+)',
-    'rank_acc': r'  Ar.\[[0-9;]+m([0-9.:]+)',
-    'rank_loss': r'  Lr.\[[0-9;]+m([0-9.:]+)',
+    'MAE': r': M .\[[0-9;]+m([0-9.]+(?:.\[0m:.\[[0-9;]+m[0-9.]+)*)',
+    'RMSE': r'  R .\[[0-9;]+m([0-9.]+(?:.\[0m:.\[[0-9;]+m[0-9.]+)*)',
+    'pearson': r'  P .\[[0-9;]+m([0-9.]+(?:.\[0m:.\[[0-9;]+m[0-9.]+)*)',
+    'spearman': r'  S .\[[0-9;]+m([0-9.]+(?:.\[0m:.\[[0-9;]+m[0-9.]+)*)',
+    'rank_acc': r'  Ar.\[[0-9;]+m([0-9.]+(?:.\[0m:.\[[0-9;]+m[0-9.]+)*)',
+    'rank_loss': r'  Lr.\[[0-9;]+m([0-9.]+(?:.\[0m:.\[[0-9;]+m[0-9.]+)*)',
     'options': r'\(([^)]+)\)',
 }
 SCORE_TYPES = ['MAE', 'RMSE', 'pearson', 'spearman', 'rank_acc', 'rank_loss']
@@ -53,8 +53,9 @@ def main(exp_dirs, output_tsv):
         for key, pat in SCORE_PATTERNS.items():
             m = re.search(pat, score_info)
             if m:
+                scores = re.sub('.\[[0-9;]+m', '', m.group(1)).split(':')
                 if key in SCORE_TYPES:  # split quality/naturalness scores, prepend with Q_ or N_
-                    for score, sc_type in zip(m.group(1).split(':'), cfg['target_col']):
+                    for score, sc_type in zip(scores, cfg['target_col']):
                         cfg[sc_type[0].upper() + '_' + key] = score
                 else:
                     cfg[key] = m.group(1)
