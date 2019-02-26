@@ -181,9 +181,14 @@ prepare_dir:
 	echo "$(DESC)" >> $(TRY_DIR)/ABOUT
 	make printvars > $(TRY_DIR)/VARS
 	make printgit > $(TRY_DIR)/GIT_VERSION
+
+prepare_data: prepare_dir
+prepare_data:
+	# copy train-dev-test data
 	cp $(TRAIN_DATA) $(TRY_DIR)/train.tsv
 	cp $(VALID_DATA) $(TRY_DIR)/devel.tsv
 	cp $(TEST_DATA) $(TRY_DIR)/test.tsv
+
 
 # Main targets
 
@@ -227,7 +232,7 @@ score:
 
 train: RUN_NAME := train
 train:
-	make prepare_dir TRY_DIR=$(TRY_DIR) EVAL_TEST=$(EVAL_TEST) SEED=$(SEED) CV_NUM=$(CV_NUM) CFG_OVERRIDE='$(CFG_OVERRIDE)'
+	make prepare_data TRY_DIR=$(TRY_DIR) EVAL_TEST=$(EVAL_TEST) SEED=$(SEED) CV_NUM=$(CV_NUM) CFG_OVERRIDE='$(CFG_OVERRIDE)' 
 	make train_process TRY_DIR=$(TRY_DIR) TRY_NUM=$(TRY_NUM) EVAL_TEST=$(EVAL_TEST) SEED=$(SEED) CV_NUM=$(CV_NUM) \
 	    TRAIN_PORTION=$(TRAIN_PORTION) DEBUG_LOG_TRAIN=$(DEBUG_LOG_TRAIN)
 
