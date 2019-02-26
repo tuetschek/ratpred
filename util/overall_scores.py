@@ -26,6 +26,7 @@ def process_data(args):
     for fname in fnames:
         evaler.append_from_tsv(fname)
     results = evaler.get_stats(hide_nans=False)
+    log_info("Evaluation over file(s): %s" % ", ".join(fnames))
     for tc in sorted(results.keys()):
         log_info("%s Distance: %.3f (avg: %.3f, std: %.3f)" % (tc.upper(),
                                                                results[tc]['dist_total'],

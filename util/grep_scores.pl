@@ -34,7 +34,7 @@ exit() if ( !defined $file_to_process );
 
 # Process the file
 open( my $fh, '<:utf8', $file_to_process );
-my ($mae_str, $rmse_str, $pear_str, $spea_str, $racc_str, $rloss_str) = ('') x 6;
+my ($mae_str, $rmse_str, $pear_str, $spea_str, $racc_str, $rloss_str, $eval_indic) = ('') x 7;
 
 while ( my $line = <$fh> ) {
     chomp $line;
@@ -56,9 +56,12 @@ while ( my $line = <$fh> ) {
         my ($racc) = ($line =~ /accuracy: ([0-9.]+)/);
         $racc_str .= ($racc_str ? ':' : '') . rg( 0, 1, $racc ) . "$racc\e[0m";
     }
-    if ( $line =~ /Pairwise rank loss: .*[0-9.]+/i ){
+    if ( $line =~ /Pairwise rank loss: .* \(avg: [0-9.]+/i ){
         my ($rloss) = ($line =~ /\(avg: ([0-9.]+)/);
         $rloss_str .= ($rloss_str ? ':' : '') . rg( 0, 0.5, $rloss, 1 ) . "$rloss\e[0m";
+    }
+    if ( $line =~ /(Loading test data from|Evaluation over).*test\.tsv/ ){
+        $eval_indic = "\e[41m\e[97m[E]\e[0m  ";
     }
 }
 
@@ -71,6 +74,7 @@ print $pear_str ? "P $pear_str\e[0m  " : "";
 print $spea_str ? "S $spea_str\e[0m  " : "";
 print $racc_str ? "Ar$racc_str\e[0m  " : "";
 print $rloss_str ? "Lr$rloss_str\e[0m  " : "";
+print $eval_indic;
 #
 # Subs
 #
