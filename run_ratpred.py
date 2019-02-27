@@ -67,6 +67,26 @@ def test(args):
                  (tc.upper(), results[tc]['rank_loss_total'], results[tc]['rank_loss_avg']))
 
 
+def interactive(args):
+
+    rp = RatingPredictor.load_from_file(args.model_file)
+
+    print('')
+    inputs = rp.interactive_input()
+    while inputs is not None:
+        da, ref, hyp, hyp2 = inputs
+        raw_rating, raw_rank_diff = rp.rate([hyp], [hyp2],
+                                            [ref] if ref else None,
+                                            [da] if da else None,
+                                            adjust_output=False)
+        print('Raw rating     : % .4f' % raw_rating[0])
+        if hyp2:
+            print('Raw out2 rating: % .4f' % (raw_rating[0] - raw_rank_diff[0]))
+            print('Raw rank diff  : % .4f' % raw_rank_diff[0])
+        print('')
+        inputs = rp.interactive_input()
+
+
 def main():
     ap = ArgumentParser()
     ap.add_argument('-d', '--debug-output', help='Path to debugging output file', type=str)
@@ -93,6 +113,9 @@ def main():
     ap_test.add_argument('model_file', type=str, help='Path to a trained predictor model')
     ap_test.add_argument('test_data', type=str, help='Path to the test data TSV file')
 
+    ap_interactive = subp.add_parser('interactive', help='Interactive test session')
+    ap_interactive.add_argument('model_file', type=str, help='Path to a trained predictor model')
+
     args = ap.parse_args()
     if args.debug_output:
         ds = file_stream(args.debug_output, mode='w')
@@ -100,8 +123,10 @@ def main():
 
     if hasattr(args, 'train_data'):
         train(args)
-    else:
+    elif hasattr(args, 'test_data'):
         test(args)
+    else:
+        interactive(args)
 
 
 if __name__ == '__main__':

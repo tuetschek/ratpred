@@ -14,6 +14,49 @@ from tgen.futil import tokenize
 from tgen.delex import delex_sent
 
 
+def preprocess_sent(da, sent, delex_slots, delex_slot_names):
+    sent = tokenize(sent.lower()).split(' ')
+    if delex_slots:
+        return delex_sent(da, sent, delex_slots, not delex_slot_names, delex_slot_names)[0]
+    return sent
+
+
+def interactive_input(das_type='cambridge', delex_slots=set(),
+                      delex_slot_names=False, delex_das=False,
+                      input_da=True, input_ref=False):
+
+    da = None
+    if input_da:
+        da = raw_input('Enter DA             : ').decode('utf-8').strip()
+        if not da:
+            return None
+        if das_type == 'text':
+            da = [(tok, None) for tok in preprocess_sent(None, da, False, False)]
+        else:
+            da = DA.parse_cambridge_da(da)
+            if delex_das:
+                da = da.get_delexicalized(delex_slots)
+    ref = None
+    if input_ref:
+        ref = raw_input('Enter reference      : ').decode('utf-8').strip()
+        if not ref:
+            return None
+        ref = [(tok, None) for tok in preprocess_sent(da, ref, delex_slots, delex_slot_names)]
+
+    hyp = raw_input('Enter system output 1: ').decode('utf-8').strip()
+    if not hyp:
+        return None
+    hyp = [(tok, None) for tok in preprocess_sent(da, hyp, delex_slots, delex_slot_names)]
+
+    hyp2 = raw_input('Enter system output 2: ').decode('utf-8').strip()
+    if not hyp2:
+        hyp2 = []
+    else:
+        hyp2 = [(tok, None) for tok in preprocess_sent(da, hyp2, delex_slots, delex_slot_names)]
+
+    return (da, ref, hyp, hyp2)
+
+
 def read_data(filename, target_cols, das_type='cambridge',
               delex_slots=set(), delex_slot_names=False, delex_das=False):
     """Read the input data from a TSV file."""
@@ -23,26 +66,20 @@ def read_data(filename, target_cols, das_type='cambridge',
     # force data type to string if the data set doesn't contain human references
     data['orig_ref'] = data['orig_ref'].apply(lambda x: '' if not isinstance(x, basestring) else x)
 
-    def preprocess_sent(da, sent):
-        sent = tokenize(sent.lower()).split(' ')
-        if delex_slots:
-            return delex_sent(da, sent, delex_slots, not delex_slot_names, delex_slot_names)[0]
-        return sent
-
     if das_type == 'text':  # for MT output classification
-        das = [[(tok, None) for tok in preprocess_sent(None, sent)]
+        das = [[(tok, None) for tok in preprocess_sent(None, sent, False, False)]
                for sent in data['mr']]
     else:
         das = [DA.parse_cambridge_da(da) for da in data['mr']]
 
-    texts_ref = [[(tok, None) for tok in preprocess_sent(da, sent)]
+    texts_ref = [[(tok, None) for tok in preprocess_sent(da, sent, delex_slots, delex_slot_names)]
                  for da, sent in zip(das, data['orig_ref'])]
-    texts_hyp = [[(tok, None) for tok in preprocess_sent(da, sent)]
+    texts_hyp = [[(tok, None) for tok in preprocess_sent(da, sent, delex_slots, delex_slot_names)]
                  for da, sent in zip(das, data['system_ref'])]
 
     # alternative reference with rating difference / use to compare
     if 'system_ref2' in data.columns:
-        texts_hyp2 = [[(tok, None) for tok in preprocess_sent(da, sent)]
+        texts_hyp2 = [[(tok, None) for tok in preprocess_sent(da, sent, delex_slots, delex_slot_names)]
                       if isinstance(sent, basestring) else None
                       for da, sent in zip(das, data['system_ref2'])]
     else:

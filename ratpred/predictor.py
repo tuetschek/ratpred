@@ -29,7 +29,7 @@ from tgen.ml import DictVectorizer
 
 import tgen.externals.seq2seq as tf06s2s
 
-from ratpred.futil import read_data
+from ratpred.futil import read_data, interactive_input
 from ratpred.embeddings import Word2VecEmbeddingExtract, CharEmbeddingExtract
 from ratpred.tb_logging import DummyTensorBoardLogger, TensorBoardLogger
 from ratpred.eval import Evaluator
@@ -224,6 +224,11 @@ class RatingPredictor(TFModel):
                          'text' if self.da_enc == 'token' else 'cambridge',
                          self.delex_slots, self.delex_slot_names, self.delex_das)
 
+    def interactive_input(self):
+        return interactive_input('text' if self.da_enc == 'token' else 'cambridge',
+                                 self.delex_slots, self.delex_slot_names, self.delex_das,
+                                 self.da_enc, self.ref_enc)
+
     def _seq2seq_pretrain(self, model_fname=None):
 
         log_info('Seq2seq pretraining...')
@@ -363,7 +368,7 @@ class RatingPredictor(TFModel):
         results['cost_comb'] = comb_cost
         return comb_cost
 
-    def rate(self, hyps=None, hyp2s=None, refs=None, das=None):
+    def rate(self, hyps=None, hyp2s=None, refs=None, das=None, adjust_output=True):
         """
         Rate a pair of reference sentence + system output hypothesis.
 
@@ -378,7 +383,9 @@ class RatingPredictor(TFModel):
         fd = {}
         self._add_inputs_to_feed_dict(fd, inputs_hyp, inputs_hyp2, inputs_ref, inputs_da)
         val = self.session.run([self.output, self.rank_diff], feed_dict=fd)
-        return self._adjust_output(val[0]).astype(float), val[1]
+        if adjust_output:
+            return self._adjust_output(val[0]).astype(float), val[1]
+        return val
 
     def _adjust_output(self, val, no_sigmoid=False):
         if self.predict_ints:
