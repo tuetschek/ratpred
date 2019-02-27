@@ -116,6 +116,7 @@ class RatingPredictor(TFModel):
         self.predict_halves = cfg.get('predict_halves', False)
         self.predict_coarse = cfg.get('predict_coarse', None)
         self.scale_reversed = cfg.get('scale_reversed', False)  # HTER is reversed
+        self.rank_loss_type = cfg.get('rank_loss_type', 'hinge')
         self.num_outputs = None  # will be changed in training
 
         self.tb_logger = DummyTensorBoardLogger()
@@ -593,10 +594,14 @@ class RatingPredictor(TFModel):
             with tf.variable_scope(self.scope_name):
                 self.ranking_mask = tf.placeholder(tf.float32, shape=self.target.shape,
                                                    name='ranking_mask')
-                # pairwise hinge loss
-                pairwise_hinge = tf.maximum(0.0, 1.0 - self.rank_diff)
-                # XXX TODO have the option of pairwise square loss
-                self.ranking_cost = tf.reduce_mean(tf.multiply(pairwise_hinge, self.ranking_mask))
+                if self.rank_loss_type == 'squared':
+                    # pairwise square loss (XXX a bit weird formulation perhaps)
+                    pairwise_sq = tf.square(tf.maximum(0.0, - self.rank_diff))
+                    self.ranking_cost = tf.reduce_mean(tf.multiply(pairwise_sq, self.ranking_mask))
+                else:
+                    # pairwise hinge loss
+                    pairwise_hinge = tf.maximum(0.0, 1.0 - self.rank_diff)
+                    self.ranking_cost = tf.reduce_mean(tf.multiply(pairwise_hinge, self.ranking_mask))
         else:
             # ignore any ranking cost if we don't have hyps
             self.ranking_cost = tf.constant(0.0)
