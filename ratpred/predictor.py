@@ -117,6 +117,7 @@ class RatingPredictor(TFModel):
         self.predict_coarse = cfg.get('predict_coarse', None)
         self.scale_reversed = cfg.get('scale_reversed', False)  # HTER is reversed
         self.rank_loss_type = cfg.get('rank_loss_type', 'hinge')
+        self.da_attention = cfg.get('da_attention', None)
         self.num_outputs = None  # will be changed in training
 
         self.tb_logger = DummyTensorBoardLogger()
@@ -724,19 +725,44 @@ class RatingPredictor(TFModel):
 
         # apply RNN over embeddings
         enc_state_hyp, enc_state_hyp2, enc_state_ref, enc_state_da = None, None, None, None
-        if enc_inputs_hyp is not None:
-            with tf.variable_scope('enc_hyp') as scope:
-                enc_state_hyp = rnn_func(inputs=enc_in_hyp_emb)[1:]
-                scope.reuse_variables()
-                enc_state_hyp2 = rnn_func(inputs=enc_in_hyp2_emb)[1:]
-
-        if enc_inputs_ref is not None:
-            with self._get_ref_variable_scope():
-                enc_state_ref = rnn_func(inputs=enc_in_ref_emb)[1:]
 
         if enc_inputs_da is not None:
             with tf.variable_scope('enc_da'):
-                enc_state_da = rnn_func(inputs=enc_in_da_emb)[1:]
+                enc_outs_da, enc_state_da = rnn_func(inputs=enc_in_da_emb)
+
+        if enc_inputs_ref is not None:
+            with self._get_ref_variable_scope():
+                _, enc_state_ref = rnn_func(inputs=enc_in_ref_emb)
+
+        if self.da_attention:
+            assert (self.da_enc and self.hyp_enc and not self.ref_enc)
+            # attention uses one tensor for the encoder outputs -- need to join
+            enc_outs_da = tf.stack(enc_outs_da, axis=1)
+            # add attention wrapper over DAs into rnn_func
+            if self.da_attention == 'bahdanau':
+                attn = tf.contrib.seq2seq.BahdanauAttention(self.emb_size, enc_outs_da, name='attn')
+            else:
+                attn = tf.contrib.seq2seq.LuongAttention(self.emb_size, enc_outs_da, name='attn')
+            # create new cell object -- weights matrix will have a different shape (not square) !!!
+            cell_type = (tf.contrib.rnn.GRUCell
+                         if self.cell_type.startswith('gru')
+                         else tf.contrib.rnn.BasicLSTMCell(self.emb_size))
+            attn_cell = tf.contrib.seq2seq.AttentionWrapper(cell_type(self.emb_size), attn, name='attn_cell')
+            # 2-layer cells: attention is on the bottom layer
+            if self.cell_type.endswith('/2'):
+                attn_cell = tf.contrib.rnn.MultiRNNCell([attn_cell, cell_type(self.emb_size)])
+            # update the RNN func for use with hypothesis encoders
+            rnn_func = functools.partial(tf.contrib.rnn.static_rnn,
+                                         cell=attn_cell, dtype=tf.float32)
+            if self.bidi:
+                rnn_func = functools.partial(tf.contrib.rnn.static_bidirectional_rnn,
+                                             cell_fw=attn_cell, cell_bw=attn_cell, dtype=tf.float32)
+
+        if enc_inputs_hyp is not None:
+            with tf.variable_scope('enc_hyp') as scope:
+                _, enc_state_hyp = rnn_func(inputs=enc_in_hyp_emb)
+                scope.reuse_variables()
+                _, enc_state_hyp2 = rnn_func(inputs=enc_in_hyp2_emb)
 
         if self.daclassif_pretrain_passes > 0:
             assert enc_inputs_hyp is not None
@@ -874,12 +900,10 @@ class RatingPredictor(TFModel):
         """Flatten up to 3 dimensions of tuples, return 1-D array."""
         if enc_state is None:
             return []
+        if isinstance(enc_state, tf.contrib.seq2seq.AttentionWrapperState):
+            return self._flatten_enc_state(enc_state.cell_state)
         if isinstance(enc_state, tuple):
-            if isinstance(enc_state[0], tuple):
-                if isinstance(enc_state[0][0], tuple):
-                    return [x for z in enc_state for y in z for x in y]
-                return [x for y in enc_state for x in y]
-            return [x for x in enc_state]
+            return sum([self._flatten_enc_state(x) for x in enc_state], [])
         return [enc_state]
 
     def _add_inputs_to_feed_dict(self, fd,

@@ -77,6 +77,8 @@ def main(args):
     nn_shape += ' +ints' if cfg.get('predict_ints') else ''
     nn_shape += ' +adgr' if cfg.get('optimizer_type') == 'adagrad' else ''
     nn_shape += ' +sqrl' if cfg.get('rank_loss_type') == 'squared' else ''
+    nn_shape += ' +Batt' if cfg.get('da_attention') == 'bahdanau' else ''
+    nn_shape += ' +Latt' if cfg.get('da_attention') == 'luong' else ''
 
     if args.cv_runs:
         num_runs = len(args.cv_runs.split())
