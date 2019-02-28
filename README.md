@@ -1,5 +1,5 @@
-RatPred
-=======
+RatPred 🐀
+=========
 
 _Rat(ing) Pred(ictor) – A Referenceless NLG Quality Estimation Tool_
 
