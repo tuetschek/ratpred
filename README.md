@@ -31,7 +31,9 @@ License
 
 Author: [Ondřej Dušek](https://github.com/tuetschek)
 
-Copyright © 2017 Interaction Lab, Heriot-Watt University, Edinburgh.
+Copyright © 2017-2018 Interaction Lab, Heriot-Watt University, Edinburgh.
+Copyright © 2019 Institute of Formal and Applied Linguistics, Charles University, Prague.
+
 
 Licensed under the Apache License, Version 2.0 (see [LICENSE.txt](LICENSE.txt)).
 
