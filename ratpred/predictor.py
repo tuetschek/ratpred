@@ -13,7 +13,6 @@ import sys
 import re
 import math
 import os.path
-import functools
 
 import numpy as np
 import tensorflow as tf
@@ -707,6 +706,16 @@ class RatingPredictor(TFModel):
             scope = tf.variable_scope('enc_ref')
         return scope
 
+    def _apply_rnn(self, cell, inputs):
+        """Apply the correct RNN function + always just return a tuple of outputs, state
+        (fw and bw states for bidi RNN are joined)."""
+        if self.bidi:
+            outputs, state_fw, state_bw = tf.nn.static_bidirectional_rnn(
+                cell_fw=self.cell, cell_bw=self.cell, inputs=inputs, dtype=tf.float32)
+            return outputs, state_fw + state_bw
+        else:
+            return tf.nn.static_rnn(cell=self.cell, inputs=inputs, dtype=tf.float32)
+
     def _build_classif_net(self, enc_inputs_hyp=None, enc_inputs_hyp2=None,
                            enc_inputs_ref=None, enc_inputs_da=None):
         """Build the rating prediction RNN structure.
@@ -716,29 +725,24 @@ class RatingPredictor(TFModel):
         enc_in_hyp_emb, enc_in_hyp2_emb, enc_in_ref_emb, enc_in_da_emb = self._build_embs(
             enc_inputs_hyp, enc_inputs_hyp2, enc_inputs_ref, enc_inputs_da)
 
-        # select RNN type (ltr or bidi)
-        rnn_func = functools.partial(tf.contrib.rnn.static_rnn,
-                                     cell=self.cell, dtype=tf.float32)
-        if self.bidi:
-            rnn_func = functools.partial(tf.contrib.rnn.static_bidirectional_rnn,
-                                         cell_fw=self.cell, cell_bw=self.cell, dtype=tf.float32)
-
         # apply RNN over embeddings
         enc_state_hyp, enc_state_hyp2, enc_state_ref, enc_state_da = None, None, None, None
 
         if enc_inputs_da is not None:
             with tf.variable_scope('enc_da'):
-                enc_outs_da, enc_state_da = rnn_func(inputs=enc_in_da_emb)
+                enc_outs_da, enc_state_da = self._apply_rnn(self.cell, enc_in_da_emb)
 
         if enc_inputs_ref is not None:
             with self._get_ref_variable_scope():
-                _, enc_state_ref = rnn_func(inputs=enc_in_ref_emb)
+                _, enc_state_ref = self._apply_rnn(self.cell, enc_in_ref_emb)
 
+        enc_hyp_cell = self.cell
+        # enhance system output encoder cells with attention over DAs
         if self.da_attention:
             assert (self.da_enc and self.hyp_enc and not self.ref_enc)
             # attention uses one tensor for the encoder outputs -- need to join
             enc_outs_da = tf.stack(enc_outs_da, axis=1)
-            # add attention wrapper over DAs into rnn_func
+            # build the attention model
             if self.da_attention == 'bahdanau':
                 attn = tf.contrib.seq2seq.BahdanauAttention(self.emb_size, enc_outs_da, name='attn')
             else:
@@ -747,22 +751,16 @@ class RatingPredictor(TFModel):
             cell_type = (tf.contrib.rnn.GRUCell
                          if self.cell_type.startswith('gru')
                          else tf.contrib.rnn.BasicLSTMCell(self.emb_size))
-            attn_cell = tf.contrib.seq2seq.AttentionWrapper(cell_type(self.emb_size), attn, name='attn_cell')
+            enc_hyp_cell = tf.contrib.seq2seq.AttentionWrapper(cell_type(self.emb_size), attn, name='attn_cell')
             # 2-layer cells: attention is on the bottom layer
             if self.cell_type.endswith('/2'):
-                attn_cell = tf.contrib.rnn.MultiRNNCell([attn_cell, cell_type(self.emb_size)])
-            # update the RNN func for use with hypothesis encoders
-            rnn_func = functools.partial(tf.contrib.rnn.static_rnn,
-                                         cell=attn_cell, dtype=tf.float32)
-            if self.bidi:
-                rnn_func = functools.partial(tf.contrib.rnn.static_bidirectional_rnn,
-                                             cell_fw=attn_cell, cell_bw=attn_cell, dtype=tf.float32)
+                enc_hyp_cell = tf.contrib.rnn.MultiRNNCell([enc_hyp_cell, cell_type(self.emb_size)])
 
         if enc_inputs_hyp is not None:
             with tf.variable_scope('enc_hyp') as scope:
-                _, enc_state_hyp = rnn_func(inputs=enc_in_hyp_emb)
+                _, enc_state_hyp = self._apply_rnn(enc_hyp_cell, enc_in_hyp_emb)
                 scope.reuse_variables()
-                _, enc_state_hyp2 = rnn_func(inputs=enc_in_hyp2_emb)
+                _, enc_state_hyp2 = self._apply_rnn(enc_hyp_cell, enc_in_hyp2_emb)
 
         if self.daclassif_pretrain_passes > 0:
             assert enc_inputs_hyp is not None
