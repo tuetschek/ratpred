@@ -443,6 +443,8 @@ class RatingPredictor(TFModel):
         self.train_refs = self.train_refs[:-self.validation_size]
         self.train_hyps = self.train_hyps[:-self.validation_size]
         self.train_hyp2s = self.train_hyp2s[:-self.validation_size]
+        # XXX this silently assumes that the real data are at the end of the training
+        # data file. this is true for our data, but should be fixed to make it safer
         self.train_is_reals = self.train_is_reals[:-self.validation_size]
 
     def _init_training(self, inputs, targets,
