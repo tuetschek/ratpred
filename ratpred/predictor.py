@@ -219,11 +219,22 @@ class RatingPredictor(TFModel):
         ret.saver.restore(ret.session, tf_session_fname)
         return ret
 
-    def load_data(self, data_file):
+    def load_data(self, data_file, filter_by_targets=False):
         """Load a data file, return inputs and targets."""
-        return read_data(data_file, self.target_cols,
-                         'text' if self.da_enc == 'token' else 'cambridge',
-                         self.delex_slots, self.delex_slot_names, self.delex_das)
+        log_info("Loading data from %s..." % data_file)
+        inputs, targets = read_data(data_file, self.target_cols,
+                                    'text' if self.da_enc == 'token' else 'cambridge',
+                                    self.delex_slots, self.delex_slot_names, self.delex_das)
+        log_info("Loaded %d instances." % len(inputs))
+        if filter_by_targets:
+            filt_inps, filt_trgs = [], []
+            for inp, trg in zip(inputs, targets):
+                if not all(np.isnan(trg)):
+                    filt_inps.append(inp)
+                    filt_trgs.append(trg)
+            log_info("Kept %d instances relevant for %s" % (len(filt_inps), ", ".join(self.target_cols)))
+            return filt_inps, np.array(filt_trgs)
+        return inputs, targets
 
     def interactive_input(self):
         return interactive_input('text' if self.da_enc == 'token' else 'cambridge',
@@ -286,10 +297,10 @@ class RatingPredictor(TFModel):
     def train(self, train_data_file, valid_data_file=None, data_portion=1.0, model_fname=None):
         """Run training on the given training data.
         """
-        inputs, targets = self.load_data(train_data_file)
+        inputs, targets = self.load_data(train_data_file, filter_by_targets=True)
         valid_inputs, valid_targets = None, None
         if valid_data_file:
-            valid_inputs, valid_targets = self.load_data(valid_data_file)
+            valid_inputs, valid_targets = self.load_data(valid_data_file, filter_by_targets=True)
         log_info('Training rating predictor...')
 
         # initialize training
