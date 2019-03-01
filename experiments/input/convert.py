@@ -9,13 +9,16 @@ import os.path
 import re
 import codecs
 import pprint
+import sys
+import os
+from itertools import combinations
 from argparse import ArgumentParser
 
 from tgen.data import DA
 from tgen.delex import delex_sent
-from futil.tokenize import tokenize
 from tgen.logf import log_info
 from tgen.lexicalize import Lexicalizer
+from futil.tokenize import tokenize
 
 
 # Start IPdb on error in interactive mode
@@ -24,9 +27,9 @@ import sys
 sys.excepthook = exc_info_hook
 
 
-DELEX_SLOTS = ['count', 'addr', 'area', 'food', 'price', 'phone',
-               'near', 'pricerange', 'postcode', 'address', 'eattype',
-               'type', 'price_range', 'good_for_meal', 'name']
+DELEX_SLOTS = set(['count', 'addr', 'area', 'food', 'price', 'phone',
+                   'near', 'pricerange', 'postcode', 'address', 'eattype',
+                   'type', 'price_range', 'good_for_meal', 'name'])
 
 
 def distort_sent(sent, distort_step, vocab):
@@ -105,6 +108,8 @@ def create_fake_data(real_data, columns, score_type='nlg'):
     def target_score(src_score, distort_step):
         if score_type == 'hter':
             return src_score + distort_step
+        elif score_type == 'rank':
+            return 1.  # ignore scores for ranks
         return max(1, min(4., src_score - distort_step))
 
     normalize = False
@@ -114,6 +119,8 @@ def create_fake_data(real_data, columns, score_type='nlg'):
         normalize = True
         best_score = 0.
         num_steps = 5
+    elif score_type == 'rank':
+        best_score = 1.
 
     fake_data = pd.DataFrame(index=np.arange(len(real_data) * (num_steps + 1)), columns=columns)
     vocab = {}
@@ -195,8 +202,45 @@ def get_data_parts(data, sizes):
     return parts
 
 
-def add_fake_data(train_data, real_data, add_from=''):
+def create_fake_pairs(fake_insts, data_len):
+    """Given fake instances (ordered by the level of distortion & in the same order across the
+    distortion levels: A-0, B-0..., A-1, B-1..., A-2, B-2... etc.), this creates pairs
+    of instances for ranking (e.g. A-0 is better than A-2 etc.)."""
+    log_info('Creating fake pairs...')
+    # create a new dataframe with the same columns, plus 2nd system reference
+    fake_pairs = []
+    max_distort = len(fake_insts) / data_len  # should be an integer
+    for inst_no in xrange(data_len):
+        # add perfect vs. imperfect
+        distort_levels = [(0, lev) for lev in range(1, max_distort)]
+        # sample 5 pairs of different degrees of distortion
+        pairs = list(combinations(range(1, max_distort), 2))
+        distort_levels += [pairs[i] for i in np.random.choice(len(pairs), 5, replace=False)]
+        # choose the instances based on the distortion levels, create the pairs instanecs
+        for better, worse in distort_levels:
+            new_inst = dict(fake_insts.iloc[inst_no + better * data_len])
+            new_inst['system_ref2'] = fake_insts.iloc[inst_no + worse * data_len]['system_ref']
+            del new_inst['informativeness']
+            del new_inst['naturalness']
+            del new_inst['quality']
+            # add both naturalness and quality, ignore informativeness here
+            for quant in ['naturalness', 'quality']:
+                fake_pairs.append(dict(new_inst, **{quant: 1}))
+    log_info('Created %d fake pairs.' % len(fake_pairs))
+    return pd.DataFrame.from_records(fake_pairs)
 
+
+def add_fake_data(train_data, real_data, add_from='', create_pairs=''):
+    """Adding fake data to the training set (return just the training set
+    if there's nothing to add).
+    @param train_data: training data (correct CV part if applicable)
+    @param real_data: basis on which the fake data should be created
+    @param add_from: T = include human refs from training data, \
+        S = include system outputs in training data (in addition to real_data)
+    @param create_pairs: create training pairs to rank ('' - not at all, \
+        'add' - in addition to regular fakes, 'only' - exclusively)
+    @return the enhanced (or unchanged) training set
+    """
     if 'T' in add_from:
         log_info("Will create fake data from human references in training data.")
         human_data = train_data.copy()
@@ -207,7 +251,7 @@ def add_fake_data(train_data, real_data, add_from=''):
         human_data = human_data.join(refs).reset_index()
         human_data = human_data.groupby(['mr', 'orig_ref'],  # delete scores
                                         as_index=False).agg(lambda vals: None)
-        real_data = pd.concat((real_data, human_data))
+        real_data = pd.concat((real_data, human_data), sort=True)
         train_data['orig_ref'] = ''
 
     if 'S' in add_from:
@@ -216,7 +260,7 @@ def add_fake_data(train_data, real_data, add_from=''):
         sys_outs = train_data.copy()
         del sys_outs['orig_ref']  # delete original human refs first
         sys_outs = sys_outs.rename(columns={'system_ref': 'orig_ref'})
-        real_data = pd.concat((real_data, sys_outs))
+        real_data = pd.concat((real_data, sys_outs), sort=True)
 
     # there is some fake data to be created and added
     if len(real_data):
@@ -224,6 +268,14 @@ def add_fake_data(train_data, real_data, add_from=''):
         fake_data = create_fake_data(real_data, train_data.columns,
                                      score_type=('hter' if args.hter_score else 'nlg'))
         log_info("Created %d fake instances." % len(fake_data))
+        # now we can add fake pairwise rankings
+        if create_pairs:
+            fake_pairs = create_fake_pairs(fake_data, len(real_data))
+            if create_pairs == 'only':
+                return pd.concat([fake_pairs, train_data], sort=True)
+            else:
+                log_info('Only keeping fake pairs, forgetting individual instances.')
+                return pd.concat([fake_data, fake_pairs, train_data], sort=True)
         return pd.concat([fake_data, train_data])
 
     # no fake data to be added -> return just the original
@@ -336,15 +388,18 @@ def convert(args):
         for offset in xrange(len(sizes)):
             os.mkdir(os.path.join(args.output_dir, 'cv%02d' % offset))
             cur_parts = parts[offset:] + parts[:offset]
-            cur_parts[0] = add_fake_data(cur_parts[0], fake_data_refs, args.create_fake_data)
-            for cv_size, cv_label in zip(cv_sizes, labels):
-                cv_parts.append(pd.concat(cur_parts[:cv_size]))
+            for part_no, (cv_size, cv_label) in enumerate(zip(cv_sizes, labels)):
+                cv_part = pd.concat(cur_parts[:cv_size], sort=True)
+                if part_no == 0:  # use fake data only in the 1st part (typically training)
+                    cv_part = add_fake_data(cv_part, fake_data_refs, args.create_fake_data, args.fake_pairs)
+                cv_parts.append(cv_part)
                 cur_parts = cur_parts[cv_size:]
                 cv_labels.append(os.path.join('cv%02d' % offset, cv_label))
         labels = cv_labels
         parts = cv_parts
     else:
-        parts[0] = add_fake_data(parts[0], fake_data_refs, args.create_fake_data)
+        # add fake data just to the 1st part (typically training)
+        parts[0] = add_fake_data(parts[0], fake_data_refs, args.create_fake_data, args.fake_pairs)
 
     # mark down the configuration
     with codecs.open(os.path.join(args.output_dir, 'config'), 'wb', encoding='UTF-8') as fh:
@@ -393,6 +448,8 @@ if __name__ == '__main__':
                     'S = training system outputs). Note that T implies -D.')
     ap.add_argument('-H', '--hter-score', action='store_true',
                     help='Use HTER score when generating the fake data, instead of NLG scores')
+    ap.add_argument('-p', '--fake-pairs', choices=['', 'add', 'only'], default='',
+                    help='Add pairs of fake data (in addition to regular fakes/only pairs)')
     ap.add_argument('input_file', type=str, help='Path to the input file')
     ap.add_argument('output_dir', type=str,
                     help='Output directory (where train,devel,test TSV will be created)')
