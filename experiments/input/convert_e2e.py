@@ -6,6 +6,7 @@ from __future__ import unicode_literals
 import pandas as pd
 from argparse import ArgumentParser
 from tgen.data import DA
+from tgen.logf import log_info
 
 # Start IPdb on error in interactive mode
 from tgen.debug import exc_info_hook
@@ -16,6 +17,8 @@ import os
 import codecs
 import pprint
 from collections import Counter
+
+from convert import create_fake_data, create_fake_pairs
 
 sys.excepthook = exc_info_hook
 
@@ -55,6 +58,48 @@ SYSTEMS_MAP = {'baseline': 'TGen',
                'tnt-nlg_v2': 'TNT2',
                'uit-dangnt': 'DANGNT',
                'ukp-tuda': 'TUDA'}
+
+
+def get_sys_outputs(data):
+    """Get instances with individual system outputs (regardless of pairs)."""
+    sys_outputs = {}
+    mrs = {}
+    for inst in data:
+        mrs[inst['mr']] = inst['delex_mr']
+        sys_outputs[(inst['mr'], inst['system'])] = inst['system_ref']
+        sys_outputs[(inst['mr'], inst['system2'])] = inst['system_ref2']
+
+    sys_outs_list = []
+    for (mr, sys_name), output in sys_outputs.iteritems():
+        sys_outs_list.append({'dataset': 'E2E',
+                              'mr': mr,
+                              'delex_mr': mrs[mr],
+                              'system': sys_name,
+                              'system_ref': None,
+                              'orig_ref': output,
+                              'informativeness': None,
+                              'naturalness': None,
+                              'quality': None,
+                              'is_real': 0})
+    log_info('Using %d different system outputs to create fake pairs.' % len(sys_outs_list))
+    return sys_outs_list
+
+
+def read_system_training_data(filename):
+    insts = []
+    for inst in pd.read_csv(filename, index_col=None, encoding='UTF-8').to_dict('records'):
+        insts.append({'dataset': 'E2E',
+                      'mr': DA.parse_diligent_da(inst['mr']).to_cambridge_da_string(),
+                      'delex_mr': DA.parse_diligent_da(inst['mr']).get_delexicalized(set(['name', 'near'])).to_cambridge_da_string(),
+                      'system': 'HUMAN',
+                      'system_ref': None,
+                      'orig_ref': inst['ref'],
+                      'informativeness': None,
+                      'naturalness': None,
+                      'quality': None,
+                      'is_real': 0})
+    log_info("Using %d different training human references to create fake pairs" % len(insts))
+    return insts
 
 
 def convert(args):
@@ -100,7 +145,7 @@ def convert(args):
     part_sizes[0] = len(unique_mrs) - sum(part_sizes[1:])
     part_labels = args.labels.split(':')
     part_start = 0
-    print >> sys.stderr, 'Data sizes in MRs: %s' % ':'.join([str(p) for p in part_sizes])
+    log_info('Data sizes in MRs: %s' % ':'.join([str(p) for p in part_sizes]))
 
     # remove ambiguous instances
     if args.unambiguous:
@@ -125,7 +170,7 @@ def convert(args):
         fh.write(pprint.pformat(vars(args), indent=4, width=100))
 
     # split the output
-    for part_size, part_label in zip(part_sizes, part_labels):
+    for part_no, (part_size, part_label) in enumerate(zip(part_sizes, part_labels)):
         part_mrs = set(unique_mrs[part_start: part_start + part_size])
         part_data = [inst for inst in data if inst['delex_mr'] in part_mrs]
 
@@ -134,8 +179,17 @@ def convert(args):
 
         part_df = pd.DataFrame(part_data)
 
+        if part_no == 0 and args.fake_data:
+            # create fake data
+            indiv_sys_outputs = get_sys_outputs(part_data)
+            if args.fake_data_from:
+                indiv_sys_outputs.extend(read_system_training_data(args.fake_data_from))
+            fake_insts = create_fake_data(pd.DataFrame.from_records(indiv_sys_outputs), part_df.columns, score_type='rank')
+            fake_pairs = create_fake_pairs(fake_insts, len(indiv_sys_outputs))
+            part_df = part_df.append(fake_pairs, sort=True)
+
         out_file = os.path.join(args.out_path, part_label + '.tsv')
-        print >> sys.stderr, 'File: %s, total size %d' % (out_file, len(part_data))
+        log_info('File: %s, total size %d' % (out_file, len(part_df)))
         part_df.to_csv(out_file, columns=COLUMNS, sep=b"\t", index=False, encoding='UTF-8')
 
         part_start += part_size
@@ -152,6 +206,10 @@ if __name__ == '__main__':
                     help='Train-devel-test split ratio (counted in unique MRs)')
     ap.add_argument('-l', '--labels', type=str, default='train:devel:test',
                     help='Train-devel-test labels (default: train:devel:test)')
+    ap.add_argument('-F', '--fake-data-from', type=str,
+                    help='Additional file to use for fake data (i.e. system training data)')
+    ap.add_argument('-f', '--fake-data', action='store_true',
+                    help='Create fake data (by distorting individual system outputs)')
 
     ap.add_argument('src_file', type=str, help='Path to source data file')
     ap.add_argument('out_path', type=str, help='Output TSV file path (will be concat with <label>.tsv)')
