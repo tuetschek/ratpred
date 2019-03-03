@@ -408,6 +408,9 @@ def convert(args):
     # write the output
     for label, part in zip(labels, parts):
         log_info("Writing part %s (size %d)..." % (label, len(part)))
+        if args.delete_refs:
+            log_info("(without human references)")
+            part['orig_ref'] = ''
         part.to_csv(os.path.join(args.output_dir, label + '.tsv'),
                     sep=b"\t", index=False, encoding='utf-8', columns=sorted(part.columns))
     log_info("Done.")
