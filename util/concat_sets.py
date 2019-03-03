@@ -6,7 +6,7 @@ import pandas as pd
 
 
 def main(args):
-    data = [pd.DataFrame.from_csv(fname, index_col=None, sep='\t') for fname in args.src_files]
+    data = [pd.read_csv(fname, index_col=None, sep='\t') for fname in args.src_files]
     data = pd.concat(data).reset_index(drop=True)
     data.to_csv(args.trg_file, index=None, sep='\t')
 
