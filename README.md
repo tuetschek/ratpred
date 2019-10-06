@@ -22,7 +22,11 @@ See [USAGE.md](USAGE.md). Note that currently RatPred is using Python 2. Python 
 Citing
 ------
 
-If you use or refer to RatPred, please cite [our ICML-LGNL paper](https://arxiv.org/abs/1708.01759):
+If you use or refer to RatPred, please cite [or INLG 2019 paper]():
+
+Ondřej Dušek, Karin Sevegnani, Ioannis Konstas, and Verena Rieser (2019): Automatic Quality Estimation for Natural Language Generation: Ranting (Jointly Rating and Ranking). In _INLG 2019_, Tokyo, Japan.
+
+You can also refer to [our ICML-LGNL paper](https://arxiv.org/abs/1708.01759):
 
 Ondřej Dušek, Jekaterina Novikova, and Verena Rieser (2017): Referenceless Quality Estimation for Natural Language Generation. In _Proceedings of the 1st Workshop on Learning to Generate Natural Language_, Sydney, Australia.
 
