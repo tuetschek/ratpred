@@ -1,2 +1,2 @@
-git+https://github.com/UFAL-DSG/tgen
+git+https://github.com/UFAL-DSG/tgen@2977686cf32ce3dcf3c17c6acf11de1ccb6380b2
 requests
