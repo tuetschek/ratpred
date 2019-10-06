@@ -60,7 +60,9 @@ Parameters:
 ### Our Experiments
 
 Preprocessing, configuration, and experiment management for our experiments used in the 
-[ICML-LGNL paper](https://arxiv.org/abs/1708.01759) is stored in the [experiments/](experiments/) subdirectory.
+[ICML-LGNL 2017](https://arxiv.org/abs/1708.01759) and [INLG 2019]() papers is stored in the [experiments/](experiments/) subdirectory.
+
+#### NEM data ####
 
 * We used our [EMNLP 2017](https://arxiv.org/abs/1707.06875) collection of rated NLG system outputs, which 
     can be downloaded from [Jekaterina's GitHub page](https://github.com/jeknov/EMNLP_17_submission).
@@ -80,6 +82,15 @@ Preprocessing, configuration, and experiment management for our experiments used
     Please see the [create_v3.py](experiments/input/create_v3.py) code
     and adjust paths as necessary before running it (paths to the source dataset, additional
     data for synthesis, and converted data storage are hardcoded!)
+
+#### E2E data ####
+
+* The [E2E Challenge](https://arxiv.org/abs/1901.07931) quality human ranking was used for ranking experiments. The data can be downloaded [here from Github](https://github.com/tuetschek/e2e-eval).
+   * Get the [human_ratings/quality.csv](https://github.com/tuetschek/e2e-eval/raw/master/human_ratings/quality.csv) file, this is the source for conversion in our experiments. Download it into a [experiments/input/nlg-datasets](experiments/input/nlg-datasets) directory.
+   
+* Preprocessing and data synthesis is controlled by the [create_v4.py](experiments/input/create_v4.py) script, which calls the [data conversion](experiments/input/convert_e2e.py) in all needed configurations. This script must be adjusted before running -- a lot of things are hardcoded!
+
+#### Experiment management ####
 
 * There is a basic experiment management system in the [Makefile](experiments/Makefile).
     Note that it contains our site-specific code and needs to be adjusted before use. Learn
