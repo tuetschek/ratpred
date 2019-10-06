@@ -3,9 +3,9 @@ RatPred 🐀
 
 _Rat(ing) Pred(ictor) – A Referenceless NLG Quality Estimation Tool_
 
-RatPred predicts NLG quality ratings using a recurrent neural network. 
-It is trained using a set of human-rated NLG outputs along with the corresponing 
-source meaning representations (MRs). It can then estimate human ratings given
+RatPred predicts NLG quality ratings/ranks using a recurrent neural network. 
+It is trained using a set of human-rated/ranked NLG outputs along with the corresponing 
+source meaning representations (MRs). It can then estimate human ratings/ranks given
 a MR and an NLG system output only. Unlike most automated metrics used for NLG, 
 such as BLEU or NIST, RatPred does not need human-authored reference texts.
 
@@ -17,7 +17,7 @@ Note that RatPred is highly experimental and only tested, so bugs are inevitable
 Installation and Usage
 ----------------------
 
-See [USAGE.md](USAGE.md).
+See [USAGE.md](USAGE.md). Note that currently RatPred is using Python 2. Python 3 version is in the works.
 
 Citing
 ------
@@ -31,7 +31,7 @@ License
 
 Author: [Ondřej Dušek](https://github.com/tuetschek)
 
-Copyright © 2017-2018 Interaction Lab, Heriot-Watt University, Edinburgh.
+Copyright © 2017-2018 Interaction Lab, Heriot-Watt University, Edinburgh.  
 Copyright © 2019 Institute of Formal and Applied Linguistics, Charles University, Prague.
 
 
