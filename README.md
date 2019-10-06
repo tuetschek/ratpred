@@ -40,6 +40,6 @@ Licensed under the Apache License, Version 2.0 (see [LICENSE.txt](LICENSE.txt)).
 Acknowledgements
 ----------------
 
-This research received funding from the EPSRC projects  DILiGENt (EP/M005429/1) and  MaDrIgAL (EP/N017536/1). The Titan Xp used for this research was donated by the NVIDIA Corporation.
+This research received funding from the EPSRC projects  DILiGENt (EP/M005429/1) and  MaDrIgAL (EP/N017536/1) and Charles University project PRIMUS/19/SCI/10. The Titan Xp used for this research was donated by the NVIDIA Corporation.
 
 
