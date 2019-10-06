@@ -17,7 +17,7 @@ QSUBMIT = qsubmit --logdir '$(TRY_DIR)' --mem $(MEM) --cores $(CPUS) --jobname R
 # XXX
 
 TRAIN_PORTION=1.0
-ACTIVATE = echo -n "" # XXX source your activate script instead
+ACTIVATE = export PYTHONPATH=""; source $$HOME/work/tgen_master/bin/activate # XXX source your activate script instead
 
 
 ifdef DEBUG
@@ -47,6 +47,12 @@ TRAINING_SET := toy
 
 ifdef D # Shortcut D -> DESC
   DESC := $(D)
+endif
+ifdef N # Shortcut N -> NUM_EXP
+  NUM_EXP := $(N)
+endif
+ifdef R # Shortcut R -> REFRESH
+  REFRESH := $(R)
 endif
 
 # Input data file defaults
