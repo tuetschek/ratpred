@@ -32,8 +32,11 @@ Here:
     * `mr` -- training meaning representations (Cambridge dialogue acts as used 
         [in our datasets](https://github.com/jeknov/EMNLP_17_submission))
     * `system_ref` -- training NLG system outputs (tokenized texts)
+    * `system_ref2` -- training NLG system outputs -- 2nd, worse reference (without loss of generality)
     * `quality` -- the training human quality ratings (depending on the `target_col` setting 
         in the configuration file, a different column may be used as the target ratings)
+        * for ranking instances, a `1` in this column just indicates this criterion is used for training 
+          -- the order is given just by `system_ref` vs. `system_ref2`
     * `is_real` -- (optional) 1/0 indicator if the given instance was synthesised
     * `orig_ref` -- (optional) human references for the given MR, separated by the special 
         `<|>` token
@@ -60,7 +63,7 @@ Parameters:
 ### Our Experiments
 
 Preprocessing, configuration, and experiment management for our experiments used in the 
-[ICML-LGNL 2017](https://arxiv.org/abs/1708.01759) and [INLG 2019]() papers is stored in the [experiments/](experiments/) subdirectory.
+[ICML-LGNL 2017](https://arxiv.org/abs/1708.01759) and [INLG 2019](https://arxiv.org/abs/1910.04731) papers is stored in the [experiments/](experiments/) subdirectory.
 
 #### NEM data ####
 
